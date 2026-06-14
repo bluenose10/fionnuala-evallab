@@ -1,29 +1,62 @@
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { realpathSync } from 'fs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Canonical project root — realpathSync gives the true on-disk casing.
+const canonicalRoot = realpathSync(path.dirname(fileURLToPath(import.meta.url)));
+const lowerRoot = canonicalRoot.toLowerCase();
+
+/**
+ * On Windows, webpack constructs some module paths programmatically
+ * (not from filesystem lookups), which can produce a lowercase variant
+ * of the project folder ("desktop" instead of "Desktop"). webpack treats
+ * these as distinct modules, so React contexts created in one instance
+ * (ActionQueueContext) are invisible to consumers in the other, causing
+ * the "Invariant: Missing ActionQueueContext" hydration error.
+ *
+ * Fix: hook into webpack's NormalModuleFactory at the afterResolve stage
+ * and rewrite any path that case-insensitively matches the project root
+ * back to the canonical casing before webpack generates its module ID.
+ * This guarantees a single module instance per file.
+ */
+class WindowsPathCasingFix {
+  apply(compiler) {
+    compiler.hooks.normalModuleFactory.tap('WindowsPathCasingFix', (nmf) => {
+      nmf.hooks.afterResolve.tap('WindowsPathCasingFix', (resolveData) => {
+        const cd = resolveData.createData;
+        if (!cd) return;
+
+        const fix = (p) => {
+          if (!p || typeof p !== 'string') return p;
+          if (p.toLowerCase().startsWith(lowerRoot)) {
+            return canonicalRoot + p.slice(canonicalRoot.length);
+          }
+          return p;
+        };
+
+        cd.resource        = fix(cd.resource);
+        cd.context         = fix(cd.context);
+        cd.userRequest     = fix(cd.userRequest);
+        cd.request         = fix(cd.request);
+      });
+    });
+  }
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   webpack(config, { dev }) {
-    // Windows NTFS is case-insensitive but case-preserving. Node.js internals
-    // can resolve the project root as either "Desktop" or "desktop", causing
-    // webpack to treat the same file as two separate module instances. React
-    // contexts created in one instance (e.g. ActionQueueContext) are invisible
-    // to components that imported from the other, producing hydration errors.
-    //
-    // Fix: pin resolve.modules to the canonical absolute path derived from
-    // import.meta.url (which always reflects the real on-disk casing), so
-    // every module lookup goes through a single path string.
-    config.resolve.modules = [
-      path.resolve(__dirname, 'node_modules'),
-      'node_modules',
-    ];
-
     if (dev) {
       config.cache = { type: 'memory' };
     }
+
+    config.resolve.modules = [
+      path.resolve(canonicalRoot, 'node_modules'),
+      'node_modules',
+    ];
+
+    config.plugins = [...(config.plugins ?? []), new WindowsPathCasingFix()];
 
     return config;
   },
