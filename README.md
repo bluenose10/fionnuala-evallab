@@ -78,3 +78,69 @@ supabase/schema.sql               # pgvector + documents table + RLS
 
 Phase 1 ✅ Setup · 2 Uploads · 3 Processing · 4 Vectorization · 5 Retrieval ·
 6 AI Answers · 7 Evaluation · 8 Experiments · 9 Observability · 10 Polish.
+
+---
+
+## Developer Notes
+
+### Windows: "Invariant: Missing ActionQueueContext" on `npm run dev`
+
+**Symptoms**
+
+Running `npm run dev` on Windows produced two sets of errors:
+
+1. Webpack warnings in the terminal:
+   ```
+   There are multiple modules with names that only differ in casing.
+   C:\Users\User\Desktop\AI Eval Platform\node_modules\next\...
+   C:\Users\User\desktop\AI Eval Platform\node_modules\next\...
+   ```
+
+2. A fatal hydration error in the browser console:
+   ```
+   Uncaught Error: Invariant: Missing ActionQueueContext
+   ```
+   followed by the entire page falling back to client rendering.
+
+**Root cause**
+
+Windows NTFS is case-insensitive but case-preserving. Somewhere inside
+Next.js's webpack setup, module paths were being constructed
+programmatically with the wrong casing (`desktop` instead of `Desktop`).
+Because those paths were built as strings rather than looked up from the
+filesystem, the normal resolver never corrected them.
+
+Webpack uses the resolved resource path as a module's unique ID. When the
+same file appeared under two differently-cased paths, webpack created two
+separate module instances. React's context system is instance-based, so
+the `ActionQueueContext` provider from one instance was invisible to the
+consumer in the other — hence the "Missing ActionQueueContext" error.
+
+**Fix — `next.config.mjs`**
+
+The fix hooks into webpack's `NormalModuleFactory.afterResolve` stage,
+which fires just before webpack generates a module's ID. At that point we
+rewrite any path field that case-insensitively matches the project root to
+the canonical on-disk casing (obtained via `fs.realpathSync`). This
+guarantees every file has exactly one module instance, regardless of how
+webpack constructed the path string internally.
+
+Two supporting changes are also in place:
+- `config.cache = { type: 'memory' }` in dev mode — stops the filesystem
+  cache from persisting mismatched path strings across restarts.
+- `config.resolve.modules` pinned to the canonical `node_modules` path —
+  ensures bare-name imports (`import x from 'react'`) always resolve
+  through the same path.
+
+All three changes live in the `webpack()` function in `next.config.mjs`.
+Do not remove them — the hydration error will return on Windows.
+
+**If you see it again**
+
+1. Stop the dev server.
+2. Delete the `.next` folder: `rm -rf .next`
+3. Restart: `npm run dev`
+
+If the error persists after that, check that `next.config.mjs` still
+contains the `WindowsPathCasingFix` plugin class and that it is pushed
+into `config.plugins`.
