@@ -42,6 +42,26 @@ Next.js + Supabase shell, ready for the RAG engine in Phase 2+.
    ```
    Visit http://localhost:3000.
 
+## Environment variables
+
+All credentials live in `.env.local` (never committed). Copy the example
+file and fill in the values as you progress through the phases.
+
+| Variable                        | Required from phase | Notes                              |
+|---------------------------------|---------------------|------------------------------------|
+| `NEXT_PUBLIC_SUPABASE_URL`      | Phase 1 → 2         | Supabase project URL               |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Phase 1 → 2         | Supabase anon/public key           |
+| `SUPABASE_SERVICE_ROLE_KEY`     | Phase 2             | Server-only — never expose to browser |
+| `OPENAI_API_KEY`                | Phase 4             | Embeddings + generation            |
+| `LANGFUSE_PUBLIC_KEY`           | Phase 9             | Observability tracing              |
+| `LANGFUSE_SECRET_KEY`           | Phase 9             | Observability tracing              |
+| `LANGFUSE_HOST`                 | Phase 9             | e.g. `https://cloud.langfuse.com`  |
+
+> **All values in `.env.local` are currently dummy placeholders.** The app
+> boots and builds, but auth, storage, and AI features will not function
+> until real keys are provided. Do not attempt to use the dummy keys against
+> live APIs — they cause silent failures and misleading errors.
+
 ## What's in the skeleton
 
 - **Landing page** — "Accuracy-First AI / Eliminating Hallucinations".
