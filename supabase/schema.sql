@@ -49,3 +49,41 @@ create policy "Users can delete their own documents"
 -- NOTE: The `document_chunks` table with a `vector` column and the
 -- ivfflat / hnsw index arrives in Phase 4 (Vectorization).
 -- ─────────────────────────────────────────────────────────────
+
+-- ─────────────────────────────────────────────────────────────
+-- EvalLab — Phase 2: Supabase Storage bucket + RLS
+-- Paste this block into the Supabase SQL Editor and run it.
+-- ─────────────────────────────────────────────────────────────
+
+-- 1. Create a private storage bucket for uploaded PDFs.
+insert into storage.buckets (id, name, public)
+values ('documents', 'documents', false)
+on conflict (id) do nothing;
+
+-- 2. Storage RLS — users may only access their own folder.
+--    Path convention: {user_id}/{timestamp}_{filename}
+--    The first path segment must equal the authenticated user's UUID.
+
+create policy "Users can upload their own documents"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'documents'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy "Users can read their own documents"
+  on storage.objects for select
+  to authenticated
+  using (
+    bucket_id = 'documents'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy "Users can delete their own documents"
+  on storage.objects for delete
+  to authenticated
+  using (
+    bucket_id = 'documents'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
