@@ -2,6 +2,14 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import { realpathSync } from 'fs';
 
+// Development-only: this Windows environment cannot verify external TLS certs
+// (same root cause as the next/font/google failure). Setting this here ensures
+// it is active before Next.js or the OpenAI SDK make any HTTPS calls.
+// Has no effect in production — NODE_ENV is 'production' on any real deployment.
+if (process.env.NODE_ENV !== 'production') {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
 // Canonical project root — realpathSync gives the true on-disk casing.
 const canonicalRoot = realpathSync(path.dirname(fileURLToPath(import.meta.url)));
 const lowerRoot = canonicalRoot.toLowerCase();
