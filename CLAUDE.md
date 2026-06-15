@@ -28,7 +28,7 @@ Evaluation: Ragas Framework
 Tracing: Langfuse
 .
 3. The 10-Phase Development Roadmap
-Project Setup: Skeleton with Next.js, Shadcn UI, and Supabase Auth
+Project Setup: ✅ FUNCTIONAL — Next.js skeleton with live Supabase Auth
 .
 File Uploads: Secure PDF ingestion to Supabase Storage with metadata tracking
 .
@@ -86,23 +86,20 @@ IMPORTANT — Current status of all credentials as of Phase 1:
 
 | Secret                          | Variable                          | Status  | Required from Phase |
 |---------------------------------|-----------------------------------|---------|---------------------|
-| Supabase Project URL            | NEXT_PUBLIC_SUPABASE_URL          | PENDING | Phase 1 → Phase 2   |
-| Supabase Anon Key               | NEXT_PUBLIC_SUPABASE_ANON_KEY     | PENDING | Phase 1 → Phase 2   |
-| Supabase Service Role Key       | SUPABASE_SERVICE_ROLE_KEY         | PENDING | Phase 2 (ingestion) |
+| Supabase Project URL            | NEXT_PUBLIC_SUPABASE_URL          | ✅ ACTIVE | Phase 1 → Phase 2   |
+| Supabase Anon Key               | NEXT_PUBLIC_SUPABASE_ANON_KEY     | ✅ ACTIVE | Phase 1 → Phase 2   |
+| Supabase Service Role Key       | SUPABASE_SERVICE_ROLE_KEY         | ✅ ACTIVE | Phase 2 (ingestion) |
 | OpenAI API Key                  | OPENAI_API_KEY                    | PENDING | Phase 4 (embeddings)|
 | Langfuse Public Key             | LANGFUSE_PUBLIC_KEY               | PENDING | Phase 9 (tracing)   |
 | Langfuse Secret Key             | LANGFUSE_SECRET_KEY               | PENDING | Phase 9 (tracing)   |
 | Langfuse Host                   | LANGFUSE_HOST                     | PENDING | Phase 9 (tracing)   |
 
-All values in .env.local are currently DUMMY PLACEHOLDERS. The app boots and builds
-but auth, storage, and AI features will not function until real keys are provided.
+Supabase credentials are real and active. Auth, RLS, and the documents table
+are live. OpenAI and Langfuse keys remain as placeholders until Phases 4 and 9.
 
-REMINDER TO CLAUDE: At the start of Phase 2, before writing any ingestion or
-storage code, STOP and prompt the user:
-"Phase 2 requires real Supabase credentials. Please update .env.local with your
-NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY,
-then also run supabase/schema.sql in your Supabase SQL Editor if you have not done so."
+REMINDER TO CLAUDE: Phase 2 Supabase credentials are already confirmed ACTIVE.
+Do NOT prompt the user to provide them again — proceed directly with ingestion
+and storage code. The schema (pgvector + documents table + RLS) has also been
+run in the Supabase SQL Editor.
 
-Do not proceed with any phase that requires a live service until the corresponding
-secret has been confirmed as real. Attempting to use dummy keys against live APIs
-will cause silent failures or misleading errors.
+Do not proceed with OpenAI or Langfuse features until those keys are confirmed real.
