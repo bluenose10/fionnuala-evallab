@@ -63,6 +63,11 @@ on conflict (id) do nothing;
 -- 2. Storage RLS — users may only access their own folder.
 --    Path convention: {user_id}/{timestamp}_{filename}
 --    The first path segment must equal the authenticated user's UUID.
+--    drop-then-recreate makes this block safe to re-run.
+
+drop policy if exists "Users can upload their own documents" on storage.objects;
+drop policy if exists "Users can read their own documents"   on storage.objects;
+drop policy if exists "Users can delete their own documents" on storage.objects;
 
 create policy "Users can upload their own documents"
   on storage.objects for insert
