@@ -25,6 +25,12 @@ create index if not exists documents_user_id_idx on public.documents (user_id);
 -- 3. Row Level Security — isolate every user's data (Phase 1 requirement).
 alter table public.documents enable row level security;
 
+-- drop-then-recreate makes these policies safe to re-run.
+drop policy if exists "Users can view their own documents"   on public.documents;
+drop policy if exists "Users can insert their own documents" on public.documents;
+drop policy if exists "Users can update their own documents" on public.documents;
+drop policy if exists "Users can delete their own documents" on public.documents;
+
 -- A user can only see their own documents.
 create policy "Users can view their own documents"
   on public.documents for select
