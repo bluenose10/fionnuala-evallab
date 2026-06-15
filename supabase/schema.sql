@@ -98,3 +98,49 @@ create policy "Users can delete their own documents"
     bucket_id = 'documents'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
+
+-- ─────────────────────────────────────────────────────────────
+-- EvalLab — Phase 3+4: document_chunks table + RLS + hnsw index
+-- Append this block and run in the Supabase SQL Editor.
+-- ─────────────────────────────────────────────────────────────
+
+-- 1. document_chunks — stores parsed text and its pgvector embedding.
+create table if not exists public.document_chunks (
+  id           uuid primary key default gen_random_uuid(),
+  document_id  uuid not null references public.documents (id) on delete cascade,
+  user_id      uuid not null references auth.users (id) on delete cascade,
+  content      text not null,
+  chunk_index  integer not null,
+  token_count  integer,
+  embedding    vector(1536),
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists document_chunks_document_id_idx
+  on public.document_chunks (document_id);
+
+-- 2. RLS — users see only their own chunks.
+alter table public.document_chunks enable row level security;
+
+drop policy if exists "Users can view their own chunks"   on public.document_chunks;
+drop policy if exists "Users can insert their own chunks" on public.document_chunks;
+drop policy if exists "Users can delete their own chunks" on public.document_chunks;
+
+create policy "Users can view their own chunks"
+  on public.document_chunks for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own chunks"
+  on public.document_chunks for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can delete their own chunks"
+  on public.document_chunks for delete
+  using (auth.uid() = user_id);
+
+-- 3. hnsw index for cosine similarity search (Phase 5 retrieval).
+--    on delete cascade on document_id means deleting a document
+--    auto-deletes all its chunks.
+create index if not exists document_chunks_embedding_hnsw_idx
+  on public.document_chunks
+  using hnsw (embedding vector_cosine_ops);

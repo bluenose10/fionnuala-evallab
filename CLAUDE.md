@@ -30,11 +30,11 @@ Tracing: Langfuse
 3. The 10-Phase Development Roadmap
 Project Setup: ✅ FUNCTIONAL — Next.js skeleton with live Supabase Auth
 .
-File Uploads: Secure PDF ingestion to Supabase Storage with metadata tracking
+File Uploads: ✅ FUNCTIONAL — Secure PDF ingestion to Supabase Storage with metadata tracking
 .
-Document Processing: LlamaIndex parsing and semantic chunking
+Document Processing: ✅ FUNCTIONAL — LlamaIndex SentenceSplitter parsing and semantic chunking
 .
-Vectorization: Generating OpenAI embeddings and storing in pgvector
+Vectorization: ✅ FUNCTIONAL — OpenAI text-embedding-3-small stored in pgvector
 .
 Retrieval: Implementing semantic search interfaces
 .
@@ -89,17 +89,18 @@ IMPORTANT — Current status of all credentials as of Phase 1:
 | Supabase Project URL            | NEXT_PUBLIC_SUPABASE_URL          | ✅ ACTIVE | Phase 1 → Phase 2   |
 | Supabase Anon Key               | NEXT_PUBLIC_SUPABASE_ANON_KEY     | ✅ ACTIVE | Phase 1 → Phase 2   |
 | Supabase Service Role Key       | SUPABASE_SERVICE_ROLE_KEY         | ✅ ACTIVE | Phase 2 (ingestion) |
-| OpenAI API Key                  | OPENAI_API_KEY                    | PENDING | Phase 4 (embeddings)|
+| OpenAI API Key                  | OPENAI_API_KEY                    | ✅ ACTIVE | Phase 3+4 (processing + embeddings)|
 | Langfuse Public Key             | LANGFUSE_PUBLIC_KEY               | PENDING | Phase 9 (tracing)   |
 | Langfuse Secret Key             | LANGFUSE_SECRET_KEY               | PENDING | Phase 9 (tracing)   |
 | Langfuse Host                   | LANGFUSE_HOST                     | PENDING | Phase 9 (tracing)   |
 
-Supabase credentials are real and active. Auth, RLS, and the documents table
-are live. OpenAI and Langfuse keys remain as placeholders until Phases 4 and 9.
+Supabase credentials are real and active. Auth, RLS, documents table, and
+document_chunks table (with pgvector embeddings) are all live.
+OpenAI key is active. Langfuse keys remain as placeholders until Phase 9.
 
-REMINDER TO CLAUDE: Phase 2 Supabase credentials are already confirmed ACTIVE.
-Do NOT prompt the user to provide them again — proceed directly with ingestion
-and storage code. The schema (pgvector + documents table + RLS) has also been
-run in the Supabase SQL Editor.
+REMINDER TO CLAUDE: Phases 1–4 are complete. Do NOT prompt the user for
+Supabase or OpenAI credentials again — all are confirmed ACTIVE.
+The /api/process Route Handler is operational (pdf-parse + LlamaIndex
+SentenceSplitter + OpenAI text-embedding-3-small → pgvector).
 
-Do not proceed with OpenAI or Langfuse features until those keys are confirmed real.
+Do not proceed with Langfuse features until those keys are confirmed real.

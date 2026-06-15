@@ -46,6 +46,9 @@ class WindowsPathCasingFix {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  experimental: {
+    serverComponentsExternalPackages: ['llamaindex', 'openai', 'pdf-parse'],
+  },
   webpack(config, { dev }) {
     if (dev) {
       config.cache = { type: 'memory' };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FileText, Loader2, Trash2, UploadCloud } from "lucide-react";
+import { Cpu, FileText, Loader2, Trash2, UploadCloud } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,8 @@ export default function DocumentManagerPage() {
   const [loadingDocs, setLoadingDocs] = useState(true);
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [deletingId, setDeletingId]   = useState<string | null>(null);
+  const [deletingId, setDeletingId]     = useState<string | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -163,6 +164,26 @@ export default function DocumentManagerPage() {
     setDeletingId(null);
   }
 
+  async function handleProcess(doc: Document) {
+    setProcessingId(doc.id);
+    try {
+      const res = await fetch("/api/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId: doc.id }),
+      });
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({ error: "Processing failed" }));
+        alert(`Processing failed: ${error}`);
+      }
+      await fetchDocs();
+    } catch {
+      alert("Network error — could not reach the processing endpoint.");
+    } finally {
+      setProcessingId(null);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -262,19 +283,20 @@ export default function DocumentManagerPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Uploaded</TableHead>
                 <TableHead />
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {loadingDocs ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center">
+                  <TableCell colSpan={7} className="py-10 text-center">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : docs.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className="py-10 text-center text-sm text-muted-foreground"
                   >
                     No documents uploaded yet.
@@ -298,6 +320,23 @@ export default function DocumentManagerPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {new Date(doc.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      {doc.status === "uploaded" && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={processingId === doc.id}
+                          onClick={() => handleProcess(doc)}
+                          aria-label="Process document"
+                        >
+                          {processingId === doc.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Cpu className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </Button>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Button
