@@ -172,12 +172,15 @@ export default function DocumentManagerPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ documentId: doc.id }),
       });
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const { error } = await res.json().catch(() => ({ error: "Processing failed" }));
-        alert(`Processing failed: ${error}`);
+        const msg = body.error ?? "Processing failed";
+        console.error("[handleProcess] error:", msg);
+        alert(`Processing failed: ${msg}`);
       }
       await fetchDocs();
-    } catch {
+    } catch (e) {
+      console.error("[handleProcess] network error:", e);
       alert("Network error — could not reach the processing endpoint.");
     } finally {
       setProcessingId(null);

@@ -7,6 +7,12 @@ import OpenAI from "openai";
 import fs from "fs/promises";
 import path from "path";
 
+// Windows dev: this machine cannot verify external TLS certs (same issue as
+// next/font/google). Must be set before any HTTPS call in this module.
+if (process.env.NODE_ENV !== "production") {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
+
 export async function POST(request: NextRequest) {
   // ── 1. Verify auth via anon client (reads session cookies) ─────────────────
   const anonClient = createClient();
