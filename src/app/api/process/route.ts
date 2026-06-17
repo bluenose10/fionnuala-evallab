@@ -12,9 +12,6 @@ if (process.env.NODE_ENV !== "production") {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 }
 
-// Debug: confirm the key the server is actually reading (first 20 chars only).
-console.log("[/api/process] KEY prefix:", process.env.OPENAI_API_KEY?.slice(0, 20) ?? "MISSING");
-
 export async function POST(request: NextRequest) {
   // ── 1. Verify auth via anon client (reads session cookies) ─────────────────
   const anonClient = createClient();
