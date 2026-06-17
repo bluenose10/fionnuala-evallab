@@ -144,3 +144,40 @@ create policy "Users can delete their own chunks"
 create index if not exists document_chunks_embedding_hnsw_idx
   on public.document_chunks
   using hnsw (embedding vector_cosine_ops);
+
+-- ─────────────────────────────────────────────────────────────
+-- EvalLab — Phase 5: match_document_chunks RPC
+-- Append this block and run in the Supabase SQL Editor.
+-- ─────────────────────────────────────────────────────────────
+
+-- Cosine similarity search over document_chunks.
+-- Returns the top match_count chunks closest to query_embedding.
+-- User isolation is enforced at the function level via filter_user_id
+-- (defence-in-depth on top of the service-role client that calls it).
+create or replace function match_document_chunks(
+  query_embedding    vector(1536),
+  match_count        int     default 5,
+  filter_user_id     uuid    default null,
+  filter_document_id uuid    default null
+)
+returns table (
+  id          uuid,
+  document_id uuid,
+  content     text,
+  similarity  float
+)
+language sql stable
+as $$
+  select
+    dc.id,
+    dc.document_id,
+    dc.content,
+    1 - (dc.embedding <=> query_embedding) as similarity
+  from public.document_chunks dc
+  where
+    (filter_user_id     is null or dc.user_id     = filter_user_id)
+    and
+    (filter_document_id is null or dc.document_id = filter_document_id)
+  order by dc.embedding <=> query_embedding
+  limit match_count;
+$$;
