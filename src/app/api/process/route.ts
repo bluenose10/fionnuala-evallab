@@ -1,3 +1,12 @@
+// Spec requirement: must declare Node.js runtime to bypass the 15-second
+// serverless execution limit when processing large PDF payloads.
+export const runtime = "nodejs";
+
+// Windows dev: this machine cannot verify external TLS certs.
+if (process.env.NODE_ENV !== "production") {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -7,10 +16,10 @@ import OpenAI from "openai";
 import fs from "fs/promises";
 import path from "path";
 
-// Windows dev: this machine cannot verify external TLS certs.
-if (process.env.NODE_ENV !== "production") {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-}
+// Spec requirement: process embeddings in fixed batches of exactly 20 elements.
+// Prevents OpenAI 429 rate-limit crashes on large documents and avoids
+// massive DB pool connection lag from unbounded sequential loops.
+const EMBEDDING_BATCH_SIZE = 20;
 
 export async function POST(request: NextRequest) {
   // ── 1. Verify auth via anon client (reads session cookies) ─────────────────
@@ -92,13 +101,21 @@ export async function POST(request: NextRequest) {
 
     const chunkTexts = nodes.map((n) => n.getText());
 
-    // ── 5f. Generate embeddings via OpenAI (single batched call) ──────────────
+    // ── 5f. Generate embeddings in deterministic batches of 20 ───────────────
+    //    Spec requirement: never pass an entire array to Promise.all or a single
+    //    API call — process in fixed batches of EMBEDDING_BATCH_SIZE (20) to
+    //    avoid OpenAI 429 rate-limit crashes on large documents.
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const { data: embedData } = await openai.embeddings.create({
-      model: "text-embedding-3-small",
-      input: chunkTexts,
-    });
-    const embeddings = embedData.map((e) => e.embedding);
+    const embeddings: number[][] = [];
+
+    for (let i = 0; i < chunkTexts.length; i += EMBEDDING_BATCH_SIZE) {
+      const batch = chunkTexts.slice(i, i + EMBEDDING_BATCH_SIZE);
+      const { data: embedData } = await openai.embeddings.create({
+        model: "text-embedding-3-small",
+        input: batch,
+      });
+      embeddings.push(...embedData.map((e) => e.embedding));
+    }
 
     // ── 5g. Insert document_chunks rows ────────────────────────────────────────
     const rows = chunkTexts.map((content, i) => ({
