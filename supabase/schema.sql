@@ -166,7 +166,7 @@ returns table (
   content     text,
   similarity  float
 )
-as $$
+as $func$
   select
     dc.id,
     dc.document_id,
@@ -179,5 +179,5 @@ as $$
     (filter_document_id is null or dc.document_id = filter_document_id)
   order by dc.embedding <=> query_embedding
   limit match_count;
-$$
+$func$
 language sql stable;
