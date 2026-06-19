@@ -2,7 +2,34 @@
 
 ---
 
-## 0. Session Handoff — 2026-06-19 (Post Phase 10.1 Recall Purge)
+## 0. Session Handoff — 2026-06-19 (Phase 10.1 + 10.2 Verification & Commit)
+
+### COMPLETED THIS SESSION
+- **Phase 10.1 (Recall Purge) — verified in production DB:** User ran `supabase/migrations/phase-10.1-drop-context-recall.sql` in Supabase SQL Editor. Raw `information_schema` output confirmed `context_recall_score` removed from `evaluation_logs` and `avg_context_recall` removed from `experiment_runs`.
+- **Phase 10.2 (Drift Reconciliation) — discovered via forensic re-verification:** The raw column query revealed the live `experiment_runs` table had drifted from `schema.sql`: `document_id` (FK to documents) and `metadata` (jsonb) were **missing**, despite being inserted by `/api/experiments/run` on every POST. This silently broke the experiment runner — every insert would 500. The earlier handoff's "PENDING: trigger a test experiment" step could not have passed in that state.
+- **Drift fix applied:** User ran `supabase/migrations/phase-10.2-drift-reconciliation.sql` in Supabase. `information_schema` re-verification confirmed `evaluation_logs` = 12 columns (incl. orphan `experiment_id`, now documented in `schema.sql`), `experiment_runs` = 14 columns (incl. restored `document_id` + `metadata`).
+- **Live smoke test — PASS:** POST `/api/experiments/run` against the reconciled schema inserted 2 configs cleanly ("Small chunks 256/32", "Medium chunks 512/50") with populated `document_id` (UUID `74aa652b-...`), populated `metadata` JSONB (per-query scores + rationale + match_count: 5), and real Ragas averages (`avg_faithfulness` 0.933 / 1.000). No `context_recall` anywhere in payload.
+- **UI ghost fix:** `ExperimentLeaderboard.tsx:378` radar description "four core evaluation dimensions" → "three core evaluation dimensions (Faithfulness, Relevance, Precision)". Last recall-purge ghost.
+- **Build gate:** `tsc --noEmit` EXIT 0 | `npm run build` EXIT 0 | 20/20 routes.
+- **Committed & pushed:** Commit `c28ee06` on branch `phase-10.1-recall-purge`, 38 files (+4,234 / −639). Covers Phases 6–10.2 as a single audited unit (the working tree had accumulated through these phases without intermediate commits). PR pending user opening it via https://github.com/bluenose10/ai-eval-platform/pull/new/phase-10.1-recall-purge (`gh` CLI not available in dev env).
+
+### NOTE ON PRIOR §0 HANDOFF
+The earlier "Post Phase 10.1 Recall Purge" handoff (below) is preserved for audit trail. Its "PENDING — USER MUST DO" steps have now been executed and verified; its "KNOWN GHOST METRICS" note on Harmfulness remains valid (still static 0, still deferred).
+
+### CURRENT TRUTH (authoritative as of 2026-06-19 EOD)
+- **Live schema matches `schema.sql`.** Both tables reconciled. No known drift.
+- **`/api/experiments/run` is functional in production.** Verified by live insert.
+- **Metrics are exclusively Faithfulness, Relevance, Precision.** No ghost metrics remain in the data path. Harmfulness is a known static placeholder (chart-only), not a ghost.
+- **Branch `phase-10.1-recall-purge` is pushed but NOT yet merged to `main`.** Local `main` still points at Phase 5 commit `923ed30` until the PR is merged.
+
+### REMAINING — NEXT SESSION
+- **User:** Open + review + merge the PR (`phase-10.1-recall-purge` → `main`).
+- **Then:** Phase 10 presentation layer — cost maps, architecture charts, case studies.
+- **Deferred:** Phase 11 (True Context Recall) — requires reference-answer schema + second judge pass.
+
+---
+
+## 0a. Session Handoff — 2026-06-19 (Post Phase 10.1 Recall Purge)
 
 ### COMPLETED THIS SESSION
 - **Forensic Audit:** Discovered `context_recall` was a fabricated metric across the entire stack. The judge prompt (`src/lib/evaluation/judge.ts`) never computed Recall — every value was an aliased copy of `faithfulness`.
@@ -138,7 +165,7 @@ Similarity = 1 - (embedding <=> query_embedding)
 | 7 | Automated Evaluation Engine (Ragas Framework & Telemetry Setup) | ✅ COMPLETE — Automated scoring via Ragas (Faithfulness, Relevance & Precision) |
 | 8 | Advanced Observability & Deep Tracing (Langfuse SDK Integration) | ✅ COMPLETE — Full-stack tracing via parent-child spans in Langfuse |
 | 9 | Observability & Tracing (OpenTelemetry Instrumentation & Live Dashboard) | ✅ COMPLETE — `instrumentation.ts` hook, OpenAI auto-instrumentation, live Langfuse connection status dashboard |
-| 10 | The Experimentation Engine & Portfolio Polish | 🏗️ IN PROGRESS — Backend experiment runner (`/api/experiments/run`) complete and writing to `experiment_runs`; dashboard UI, cost maps, architecture charts, and case studies pending |
+| 10 | The Experimentation Engine & Portfolio Polish | 🏗️ IN PROGRESS — Backend experiment runner (`/api/experiments/run`) verified live against reconciled schema (Phase 10.2); ExperimentLeaderboard live and verified; cost maps, architecture charts, and case studies (presentation layer) still pending |
 | 11 | True Context Recall (Proposed) | 📋 DEFERRED — Ground-truth/reference-answer-dependent metric. Requires a new schema for reference answers per query + a second judge pass. Fabricated `avg_context_recall` column purged in Phase 10.1 integrity restoration. Out of scope until reference-answer infrastructure is built. |
 
 ---
