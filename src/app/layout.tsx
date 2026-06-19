@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "EvalLab — AI Knowledge Base Evaluation Platform",
   description:
-    "Accuracy-First AI. A scientific laboratory for Grounded RAG: measure Faithfulness, Relevance, Precision & Recall — not vibes.",
+    "Accuracy-First AI. A scientific laboratory for Grounded RAG: measure Faithfulness, Relevance & Precision — not vibes.",
 };
 
 export default function RootLayout({

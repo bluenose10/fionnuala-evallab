@@ -55,6 +55,7 @@ class WindowsPathCasingFix {
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
+    instrumentationHook: true,
     serverComponentsExternalPackages: ['llamaindex', 'openai', 'pdf-parse'],
   },
   webpack(config, { dev }) {

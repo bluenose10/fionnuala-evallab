@@ -181,3 +181,104 @@ as $func$
   limit match_count;
 $func$
 language sql stable;
+
+-- ─────────────────────────────────────────────────────────────
+-- EvalLab — Phase 7: evaluation_logs table + RLS
+-- Append this block and run in the Supabase SQL Editor.
+-- ─────────────────────────────────────────────────────────────
+
+-- 1. evaluation_logs — stores Ragas-style LLM-as-a-Judge telemetry.
+create table if not exists public.evaluation_logs (
+  id                       uuid primary key default gen_random_uuid(),
+  user_id                  uuid not null references auth.users (id) on delete cascade,
+  document_id              uuid not null references public.documents (id) on delete cascade,
+  query_text               text not null,
+  generated_answer         text not null,
+  faithfulness_score       numeric(4,3) not null,
+  answer_relevance_score   numeric(4,3) not null,
+  context_precision_score  numeric(4,3) not null,
+  rationale                text not null,
+  retrieved_context        jsonb not null default '[]'::jsonb,
+  created_at               timestamptz not null default now(),
+  -- experiment_id: links an individual evaluation to the experiment_run that
+  -- produced it, when applicable. Present in the live DB as of 2026-06-19;
+  -- documented here for source-of-truth parity. Not yet written by any code
+  -- path (grep "experiment_id" in src/ → 0 hits). Nullable because standalone
+  -- evaluations (from /api/evaluate, not an experiment) have no parent run.
+  -- NOTE: no foreign key is declared because experiment_runs may not exist at
+  -- evaluation_logs creation time in some flows. Add FK if/when wired up.
+  experiment_id            uuid
+);
+
+create index if not exists evaluation_logs_user_id_idx
+  on public.evaluation_logs (user_id);
+
+create index if not exists evaluation_logs_document_id_idx
+  on public.evaluation_logs (document_id);
+
+-- 2. RLS — users see only their own evaluation logs.
+alter table public.evaluation_logs enable row level security;
+
+drop policy if exists "Users can view their own evaluation logs"   on public.evaluation_logs;
+drop policy if exists "Users can insert their own evaluation logs" on public.evaluation_logs;
+drop policy if exists "Users can delete their own evaluation logs" on public.evaluation_logs;
+
+create policy "Users can view their own evaluation logs"
+  on public.evaluation_logs for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own evaluation logs"
+  on public.evaluation_logs for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can delete their own evaluation logs"
+  on public.evaluation_logs for delete
+  using (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────────────────────────
+-- EvalLab — Phase 8: experiment_runs table + RLS
+-- Append this block and run in the Supabase SQL Editor.
+-- ─────────────────────────────────────────────────────────────
+
+-- 1. experiment_runs — stores comparative configuration experiments.
+create table if not exists public.experiment_runs (
+  id                       uuid primary key default gen_random_uuid(),
+  user_id                  uuid not null references auth.users (id) on delete cascade,
+  document_id              uuid not null references public.documents (id) on delete cascade,
+  configuration_name       text not null,
+  chunk_size               integer not null,
+  chunk_overlap            integer not null default 0,
+  prompt_template          text,
+  model_name               text not null default 'gpt-4o',
+  avg_faithfulness         numeric(4,3) not null default 0,
+  avg_answer_relevance     numeric(4,3) not null default 0,
+  avg_context_precision    numeric(4,3) not null default 0,
+  total_queries_tested     integer not null default 0,
+  metadata                 jsonb not null default '{}'::jsonb,
+  created_at               timestamptz not null default now()
+);
+
+create index if not exists experiment_runs_user_id_idx
+  on public.experiment_runs (user_id);
+
+create index if not exists experiment_runs_document_id_idx
+  on public.experiment_runs (document_id);
+
+-- 2. RLS — users see only their own experiment runs.
+alter table public.experiment_runs enable row level security;
+
+drop policy if exists "Users can view their own experiment runs"   on public.experiment_runs;
+drop policy if exists "Users can insert their own experiment runs" on public.experiment_runs;
+drop policy if exists "Users can delete their own experiment runs" on public.experiment_runs;
+
+create policy "Users can view their own experiment runs"
+  on public.experiment_runs for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own experiment runs"
+  on public.experiment_runs for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can delete their own experiment runs"
+  on public.experiment_runs for delete
+  using (auth.uid() = user_id);

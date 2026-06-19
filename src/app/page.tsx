@@ -29,7 +29,7 @@ const features = [
     icon: FlaskConical,
     title: "Evaluation Engine",
     description:
-      "Ragas computes Faithfulness, Answer Relevance, Context Precision & Recall — turning quality into measurable metrics.",
+      "Ragas computes Faithfulness, Answer Relevance & Context Precision — turning quality into measurable metrics.",
   },
   {
     icon: Layers,

@@ -1,106 +1,166 @@
-Project Specification: AI Knowledge Base Evaluation Platform
-1. Strategic Objective: "Not a Chatbot"
-The objective is to architect a production-grade AI system that moves beyond the "Upload-Chat-Hope" anti-pattern
-. Instead of a simple chatbot, this is a scientific laboratory for AI that prioritizes Grounded AI, Empirical Evaluation, and Observability
-.
-Core Engineering Differentiators:
-Scientific RAG: Transitioning from subjective "vibe checks" to objective data
-.
-Evaluation Engine: Using Ragas to calculate Faithfulness, Relevance, Precision, and Recall
-.
-Experimentation: A/B testing chunk sizes, prompt variations (Simple vs. Chain-of-Thought), and retrieval methods
-.
-Full Observability: Using Langfuse to trace every interaction from retrieval to evaluation
-.
-2. Technical Stack
-Frontend: Next.js 14+ (App Router), TypeScript, Tailwind CSS
-.
-UI Components: Shadcn UI (for an "Enterprise SaaS" aesthetic)
-.
-Backend/Database: Supabase (PostgreSQL + pgvector for vector storage)
-.
-RAG Orchestration: LlamaIndex (chosen for specialized indexing and retrieval)
-.
-Models: OpenAI GPT-4o/5 (Reasoning) and text-embedding-3-small (Embeddings)
-.
-Evaluation: Ragas Framework
-.
-Tracing: Langfuse
-.
-3. The 10-Phase Development Roadmap
-Project Setup: ✅ FUNCTIONAL — Next.js skeleton with live Supabase Auth
-.
-File Uploads: ✅ FUNCTIONAL — Secure PDF ingestion to Supabase Storage with metadata tracking
-.
-Document Processing: ✅ FUNCTIONAL — LlamaIndex SentenceSplitter parsing and semantic chunking
-.
-Vectorization: ✅ FUNCTIONAL — OpenAI text-embedding-3-small stored in pgvector
-.
-Retrieval: Implementing semantic search interfaces
-.
-AI Answers: Grounded RAG response generation using prompt templates
-.
-Evaluation System: Automated Ragas scoring stored in Supabase
-.
-Experiment Engine: Leaderboard comparing chunk sizes, hybrid search, and prompts
-.
-Observability: Langfuse integration for real-time trace/span recording
-.
-Portfolio Polish: Case study, architecture diagrams, and metrics dashboard
-.
-4. Advanced Engineering Requirements (Chat-Exclusive)
-To achieve "Senior Engineer" status, the system must include:
-Hybrid Retrieval: Combine Vector Search with BM25 Keyword Search to ensure exact-match accuracy for names and technical terms
-.
-Chain-of-Thought (CoT) Prompting: An experiment comparing a "Simple" prompt against an "Expert Analyst" persona that thinks step-by-step to improve Faithfulness scores
-.
-Production Security (RLS): Strict Supabase Row Level Security to isolate data: ALTER TABLE documents ENABLE ROW LEVEL SECURITY; USING (auth.uid() = user_id);
-.
-Tracing Hierarchy: Langfuse must log the Parent Trace (full interaction) containing individual Spans for Retrieval (Supabase) and Generation (OpenAI)
-.
-5. Master Frontend Prompt for AI Builders (Claude/v0/Bolt)
-"I am building a production-grade AI Knowledge Base Evaluation Platform (not a basic chatbot) using Next.js, Tailwind CSS, and Shadcn UI. The backend is powered by Supabase for database, authentication, and storage. Please build a professional, clean, and high-quality frontend skeleton with the following:
-Landing Page: Highlights 'Accuracy-First AI' and 'Eliminating Hallucinations.'
-Auth Pages: Modern login/signup for Supabase Auth.
-Main Dashboard: Sidebar layout with:
-Document Manager: Route /dashboard/upload with a Shadcn UI file-drop zone and metadata table.
-QA & Retrieval Lab: Interface to see AI answers side-by-side with retrieved chunks.
-Evaluation Hub: Placeholders for Ragas metrics and a Radar Chart (Spider Chart) using Recharts.
-Experiment Leaderboard: Table comparing 'Chunk Size: 200' vs 'Chunk Size: 500' and 'Hybrid Search' vs 'Vector Only.'
-Observability Summary: Status icons for 'Traces' that will link to Langfuse.
-Design: Modern 'Enterprise SaaS' aesthetic. Differentiate between 'The AI Answer' and 'The Evaluation of the Answer' to show engineering depth."
-.
-6. Phase 1 Technical Checklist
-Initialize Next.js with TypeScript and App Router
-.
-Install Shadcn UI and initialize with 'Slate'/'New York' styles
-.
-Enable pgvector in the Supabase SQL Editor
-.
-Implement middleware.ts to protect dashboard routes using Supabase Auth
-.
-Connect .env.local with Supabase project keys
-.
-7. Secrets & Hydration
-IMPORTANT — Current status of all credentials as of Phase 1:
+# CLAUDE.md: Project Specification & Senior Execution Memory
 
-| Secret                          | Variable                          | Status  | Required from Phase |
-|---------------------------------|-----------------------------------|---------|---------------------|
-| Supabase Project URL            | NEXT_PUBLIC_SUPABASE_URL          | ✅ ACTIVE | Phase 1 → Phase 2   |
-| Supabase Anon Key               | NEXT_PUBLIC_SUPABASE_ANON_KEY     | ✅ ACTIVE | Phase 1 → Phase 2   |
-| Supabase Service Role Key       | SUPABASE_SERVICE_ROLE_KEY         | ✅ ACTIVE | Phase 2 (ingestion) |
-| OpenAI API Key                  | OPENAI_API_KEY                    | ✅ ACTIVE | Phase 3+4 (processing + embeddings)|
-| Langfuse Public Key             | LANGFUSE_PUBLIC_KEY               | PENDING | Phase 9 (tracing)   |
-| Langfuse Secret Key             | LANGFUSE_SECRET_KEY               | PENDING | Phase 9 (tracing)   |
-| Langfuse Host                   | LANGFUSE_HOST                     | PENDING | Phase 9 (tracing)   |
+---
 
-Supabase credentials are real and active. Auth, RLS, documents table, and
-document_chunks table (with pgvector embeddings) are all live.
-OpenAI key is active. Langfuse keys remain as placeholders until Phase 9.
+## 0. Session Handoff — 2026-06-19 (Post Phase 10.1 Recall Purge)
 
-REMINDER TO CLAUDE: Phases 1–4 are complete. Do NOT prompt the user for
-Supabase or OpenAI credentials again — all are confirmed ACTIVE.
-The /api/process Route Handler is operational (pdf-parse + LlamaIndex
-SentenceSplitter + OpenAI text-embedding-3-small → pgvector).
+### COMPLETED THIS SESSION
+- **Forensic Audit:** Discovered `context_recall` was a fabricated metric across the entire stack. The judge prompt (`src/lib/evaluation/judge.ts`) never computed Recall — every value was an aliased copy of `faithfulness`.
+- **Phase 10.1 Purge:** Removed `context_recall` from all API routes (`/api/evaluate`, `/api/experiments/run`, `/api/experiments`), interfaces, UI components (`ExperimentLeaderboard.tsx`, `ragas-radar.tsx`, `evaluation/page.tsx`), and documentation (`README.md`, `CLAUDE.md`, `Playbook.md`, `layout.tsx`, `page.tsx`).
+- **Ranking Bias Fix:** Leaderboard composite score renormalized from `(F+R+P+Recall)/4` to `(F+R+P)/3`. Recall was faithfulness in disguise, so faithfulness was silently double-weighted. Now corrected.
+- **Latent Type Bug Fix:** Replaced unsafe `(run as Record<string, number>)` cast in `ExperimentLeaderboard.tsx:231` with type-safe `keyof ExperimentRun` accessor.
+- **Harmfulness TODO:** Added TODO marker in `ragas-radar.tsx` — Harmfulness axis is a static placeholder (score: 0), not computed. Retained for chart stability; deferred to Phase 11.
+- **Schema Fresh-Install:** Removed `context_recall_score` and `avg_context_recall` column definitions from `supabase/schema.sql`.
+- **Migration SQL:** Drafted at `supabase/migrations/phase-10.1-drop-context-recall.sql` — `ALTER TABLE ... DROP COLUMN` for both tables.
+- **Verification:** `tsc --noEmit` EXIT 0 | `npm run build` EXIT 0 | 20/20 routes compiled.
 
-Do not proceed with Langfuse features until those keys are confirmed real.
+### PENDING — USER MUST DO (AI CANNOT EXECUTE THESE)
+1. Deploy code to hosting (Netlify).
+2. Run the migration in Supabase SQL Editor (`supabase/migrations/phase-10.1-drop-context-recall.sql`). **Must run AFTER code deploy** — dropping columns before the code stops referencing them will cause live 500s.
+3. Verify `/dashboard/experiments` renders with 3-metric table (no Recall column) and 3-axis radar (Faithfulness, Relevance, Precision + Harmfulness placeholder).
+4. Trigger a test experiment via `/api/experiments/run`, inspect `experiment_runs` table — confirm no `avg_context_recall` column exists and inserts succeed cleanly.
+
+### FILES MODIFIED THIS SESSION
+- `src/app/api/evaluate/route.ts` — 2 interfaces stripped, 5 aliasing sites removed
+- `src/app/api/experiments/run/route.ts` — 2 interfaces stripped, alias + average + insert removed
+- `src/app/api/experiments/route.ts` — destructure + insert field removed
+- `supabase/schema.sql` — 2 column definitions removed
+- `src/components/dashboard/ExperimentLeaderboard.tsx` — type, METRIC_LABELS, composite /3, table header/cell, copy, latent cast bug fixed
+- `src/components/dashboard/ragas-radar.tsx` — Recall axis removed, Harmfulness TODO added
+- `src/app/dashboard/evaluation/page.tsx` — Context Recall metric card removed
+- `src/app/layout.tsx` — SEO meta: "& Recall" removed
+- `src/app/page.tsx` — Landing copy: "& Recall" removed
+- `CLAUDE.md` — Phase 7 claim fixed, Phase 11 roadmap entry added, this handoff added
+- `docs/AI Knowledge Base Playbook.md` — Phase 7 claim updated
+
+### FILES CREATED THIS SESSION
+- `supabase/migrations/phase-10.1-drop-context-recall.sql`
+- `src/app/dashboard/experiments/page.tsx` — Rewritten to render live ExperimentLeaderboard (was placeholder)
+
+### DOCUMENTATION CONSOLIDATION (same session)
+- **README.md** — Stripped duplicate env-var table, roadmap, technical defenses, and Windows dev notes. All replaced with a single pointer to CLAUDE.md.
+- **KIMI.md** — Stripped phase gate table and status section. Replaced with CLAUDE.md pointer.
+- **Playbook.md** — Stripped credentials map and 10-phase checklist. Converted to pure philosophy document (mission, stack summary, engineering principles) with CLAUDE.md pointer.
+- **CLAUDE.md** — Now the sole Master Ledger for technical status, phase progress, credentials, and guardrails.
+
+### REMAINING PHASE 10 WORK
+- Cost maps, architecture charts, case studies (presentation layer)
+- Experiment Leaderboard is now live (replaced hardcoded placeholder)
+
+### KNOWN GHOST METRICS (NOT YET ADDRESSED)
+- **Harmfulness** in `ragas-radar.tsx` — static 0, not computed. Marked with TODO. Out of scope until safety scoring infrastructure exists.
+
+### WINDOWS LOAD-BEARING DEBT (DO NOT REMOVE)
+- `next.config.mjs`: WindowsPathCasingFix webpack plugin + `cache: memory` + pinned `resolve.modules`. Required on NTFS.
+- `NODE_TLS_REJECT_UNAUTHORIZED='0'` in dev only. Prod-safe. Long-term migrate to `--use-system-ca` / `NODE_EXTRA_CA_CERTS`.
+- System-level env vars can shadow `.env.local`. If API keys fail despite valid `.env.local`, run `echo %VAR_NAME%` to check.
+
+---
+
+## 1. Knowledge Base Hierarchy (CRITICAL)
+
+This project uses a dual-layer memory system. AI assistants must prioritise information as follows:
+
+- **PDF Sources (The Strategic Compass):** Use these to maintain the Senior AI Architect persona. They define the "why" — moving from a "toy" chatbot to a Document-to-Evaluation architecture targeting a **90%+ Faithfulness score**.
+- **Markdown Sources (The Technical Blueprints):** Use these for immediate technical reality. They store the current phase status, strict database schemas (1536-vectors), and mandatory execution guardrails.
+
+---
+
+## 2. Strategic Objective: "Not a Chatbot"
+
+The objective is to architect a production-grade AI system that moves beyond the **"Upload-Chat-Hope" anti-pattern**. This is a scientific laboratory for AI that prioritises **Grounded AI**, **Empirical Evaluation**, and **Observability**.
+
+- **The Mission:** Systematically measure and optimise RAG performance, targeting a minimum **90%+ Faithfulness score** via Ragas before any configuration is promoted.
+- **Design Transparency:** The UI must clearly split "The AI Answer" from "The Evaluation" and its source chunks to prove data lineage.
+
+---
+
+## 3. Technical Stack & Ingestion Pipeline
+
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 14+ (App Router), TypeScript, Tailwind CSS, Shadcn UI |
+| Backend / Database | Supabase (PostgreSQL + pgvector), Auth, and Storage |
+| RAG Orchestration | LlamaIndex — **Mandatory:** use `SentenceSplitter` from `@llamaindex/core` |
+| Models | OpenAI GPT-4o/5 (Reasoning) + `text-embedding-3-small` (1536-dimensional vectors) |
+| Evaluation & Tracing | Ragas Framework + Langfuse (SDK + OpenTelemetry) |
+
+---
+
+## 4. The Unified Ingestion Engine (`/api/process`)
+
+Decoupled, multi-hop asynchronous architectures are explicitly rejected. The system enforces a **single atomic transaction**:
+
+```
+Fetch Storage File → LlamaIndex Token Chunking → OpenAI Vectorization → Atomic DB Insert
+```
+
+### Senior Execution Guardrails
+
+| Guardrail | Rule |
+|---|---|
+| **Orchestration Library Lock** | Strictly use LlamaIndex node parsers (`SentenceSplitter`). No custom string slicing. |
+| **Array Batch Limit (Anti-Crash)** | Process embeddings in deterministic batches of exactly **20 elements** to avoid OpenAI 429 errors and DB pool lag. |
+| **Timeout Defence** | All route handlers must declare `export const runtime = "nodejs"` to bypass the 15-second serverless limit. |
+| **Data Integrity** | A text block is only saved if its 1536-dimensional vector is successfully generated. |
+
+---
+
+## 5. Database Schema & Vector Integrity
+
+- **Zero-Orphan Philosophy:** `document_chunks` implements `ON DELETE CASCADE` linked to the parent document. Deleting a document atomically cleans the vector space — preventing stale data and hidden cloud fees.
+- **Vector Validation:** Structural health is confirmed via `vector_dims(embedding)`. The system enforces exactly **1536 dimensions**.
+- **Cosine Similarity Engine:** Matches calculated via the `match_document_chunks` RPC using the `<=>` operator:
+
+```
+Similarity = 1 - (embedding <=> query_embedding)
+```
+
+---
+
+## 6. Security & Isolation Boundaries
+
+- **Multi-Tenant Isolation:** Row Level Security (RLS) enabled on all tables. Direct data reads restricted via `auth.uid() = user_id`.
+- **Administrative Bypass:** Background ingestion and evaluation tasks use a privileged `supabaseAdmin` client via `SUPABASE_SERVICE_ROLE_KEY`.
+
+---
+
+## 7. 10-Phase Development Roadmap
+
+| Phase | Name | Status |
+|---|---|---|
+| 1 | Project Setup | ✅ COMPLETE — Next.js skeleton with live Supabase Auth |
+| 2 | File Management | ✅ COMPLETE — Secure PDF ingestion to Storage with metadata tracking |
+| 3 | Processing & Text Extraction | ✅ COMPLETE — Unified pipelines turning inputs into text streams |
+| 4 | Embeddings | ✅ COMPLETE — 1536-dimensional coordinates via `text-embedding-3-small` |
+| 5 | Retrieval Engine | ✅ COMPLETE — `match_document_chunks` RPC verified in Supabase SQL Editor |
+| 6 | AI Answers | ✅ COMPLETE — Grounded prompt execution parsing context arrays into responses |
+| 7 | Automated Evaluation Engine (Ragas Framework & Telemetry Setup) | ✅ COMPLETE — Automated scoring via Ragas (Faithfulness, Relevance & Precision) |
+| 8 | Advanced Observability & Deep Tracing (Langfuse SDK Integration) | ✅ COMPLETE — Full-stack tracing via parent-child spans in Langfuse |
+| 9 | Observability & Tracing (OpenTelemetry Instrumentation & Live Dashboard) | ✅ COMPLETE — `instrumentation.ts` hook, OpenAI auto-instrumentation, live Langfuse connection status dashboard |
+| 10 | The Experimentation Engine & Portfolio Polish | 🏗️ IN PROGRESS — Backend experiment runner (`/api/experiments/run`) complete and writing to `experiment_runs`; dashboard UI, cost maps, architecture charts, and case studies pending |
+| 11 | True Context Recall (Proposed) | 📋 DEFERRED — Ground-truth/reference-answer-dependent metric. Requires a new schema for reference answers per query + a second judge pass. Fabricated `avg_context_recall` column purged in Phase 10.1 integrity restoration. Out of scope until reference-answer infrastructure is built. |
+
+---
+
+## 8. Environment Credentials Status
+
+| Variable | Status | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | ✅ ACTIVE | Core Database/Storage URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ ACTIVE | Client-side access |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ ACTIVE | Server-side ingestion bypass |
+| `OPENAI_API_KEY` | ✅ ACTIVE | Embeddings & Generation Inference |
+| `LANGFUSE_PUBLIC_KEY` | ✅ ACTIVE | Langfuse observability public key |
+| `LANGFUSE_SECRET_KEY` | ✅ ACTIVE | Langfuse observability secret key |
+| `LANGFUSE_HOST` | ✅ ACTIVE | Langfuse host (default: `https://cloud.langfuse.com`) — used by `instrumentation.ts` and accepted as alias by `src/lib/langfuse.ts` |
+| `LANGFUSE_BASEURL` | ✅ ACTIVE | Legacy alias for `LANGFUSE_HOST` |
+
+---
+
+## 9. Technical Defenses Deployed (Phases 8 & 9)
+
+- **Trace Context Propagation:** Wired `/api/chat` parent trace generation to pass `traceId` down to the UI, which seamlessly hydrates the `/api/evaluate` payload so Ragas scores and judge rationale are attached to the same unified trace.
+- **Ingestion Idempotency & No-Op Client:** Built safe placeholder detection in `src/lib/langfuse.ts` to prevent backend app crashes when API keys are absent, empty, or contain dummy values. The no-op client mirrors the Langfuse surface used by API routes so tracing becomes transparently optional.
+- **OpenTelemetry Hook Isolation:** `instrumentation.ts` is gated to `process.env.NEXT_RUNTIME === "nodejs"` and loads heavy OTel packages dynamically. It never interferes with the atomic ingestion or retrieval transactions.
+- **Server-Only Secret Handling:** The observability dashboard page declares `export const runtime = "nodejs"` and `export const dynamic = "force-dynamic"` so Langfuse credentials are read server-side and the live connection status is refreshed per request.

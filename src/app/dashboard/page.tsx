@@ -31,28 +31,28 @@ const stats = [
   {
     title: "Experiments Run",
     value: "—",
-    hint: "Phase 8: leaderboard",
+    hint: "Phase 10: leaderboard",
     icon: TrendingUp,
   },
   {
     title: "Traces Captured",
     value: "—",
-    hint: "Phase 9: Langfuse",
+    hint: "Phase 9: Langfuse OTel",
     icon: Activity,
   },
 ];
 
 const roadmap = [
-  { phase: 1, title: "Project Setup", status: "current" },
-  { phase: 2, title: "File Uploads", status: "todo" },
-  { phase: 3, title: "Document Processing", status: "todo" },
-  { phase: 4, title: "Vectorization", status: "todo" },
-  { phase: 5, title: "Retrieval", status: "todo" },
-  { phase: 6, title: "AI Answers", status: "todo" },
-  { phase: 7, title: "Evaluation System", status: "todo" },
-  { phase: 8, title: "Experiment Engine", status: "todo" },
-  { phase: 9, title: "Observability", status: "todo" },
-  { phase: 10, title: "Portfolio Polish", status: "todo" },
+  { phase: 1, title: "Project Setup", status: "done" },
+  { phase: 2, title: "File Uploads", status: "done" },
+  { phase: 3, title: "Document Processing", status: "done" },
+  { phase: 4, title: "Vectorization", status: "done" },
+  { phase: 5, title: "Retrieval", status: "done" },
+  { phase: 6, title: "AI Answers", status: "done" },
+  { phase: 7, title: "Evaluation System", status: "done" },
+  { phase: 8, title: "Observability (Langfuse SDK)", status: "done" },
+  { phase: 9, title: "Observability & Tracing (OpenTelemetry)", status: "done" },
+  { phase: 10, title: "Experiments & Portfolio Polish", status: "current" },
 ];
 
 export default function DashboardOverview() {
@@ -102,10 +102,15 @@ export default function DashboardOverview() {
                 </span>
                 <span className="text-sm font-medium">{item.title}</span>
               </div>
-              {item.status === "current" ? (
+              {item.status === "done" ? (
                 <Badge variant="success" className="gap-1">
                   <CheckCircle2 className="h-3 w-3" />
                   Done
+                </Badge>
+              ) : item.status === "current" ? (
+                <Badge variant="default" className="gap-1">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Current
                 </Badge>
               ) : (
                 <Badge variant="secondary">Planned</Badge>

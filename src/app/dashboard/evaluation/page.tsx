@@ -23,10 +23,6 @@ const metrics = [
     name: "Context Precision",
     description: "Are the retrieved chunks relevant (signal vs. noise)?",
   },
-  {
-    name: "Context Recall",
-    description: "Did retrieval find everything needed to answer?",
-  },
 ];
 
 export default function EvaluationHubPage() {

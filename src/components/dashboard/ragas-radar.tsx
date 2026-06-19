@@ -14,7 +14,10 @@ const data = [
   { metric: "Faithfulness", score: 0 },
   { metric: "Answer Relevance", score: 0 },
   { metric: "Context Precision", score: 0 },
-  { metric: "Context Recall", score: 0 },
+  // TODO: Phase 11 - Integrate Harmfulness/Safety scoring. Currently a static
+  // placeholder axis (score: 0). Not computed by the judge prompt. Retained to
+  // keep the Radar chart stable during the Phase 10 build cycle; do not remove
+  // until a real safety metric backs it.
   { metric: "Harmfulness", score: 0 },
 ];
 
