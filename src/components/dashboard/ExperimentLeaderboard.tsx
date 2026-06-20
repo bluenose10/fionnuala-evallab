@@ -356,11 +356,11 @@ export function ExperimentLeaderboard() {
             <CardTitle>Insights</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm">
+            <div className="text-sm">
               <span className="font-semibold">Winner:</span>{" "}
               {winner.configuration_name} with an average score of{" "}
               <Badge variant="success">{formatPercent(averageScore(winner))}</Badge>
-            </p>
+            </div>
             <p className="mt-1 text-xs text-muted-foreground">
               Based on the most recent run per configuration, averaged across
               Faithfulness, Relevance, and Precision.

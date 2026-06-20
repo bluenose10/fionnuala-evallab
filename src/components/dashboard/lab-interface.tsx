@@ -106,15 +106,35 @@ export function LabInterface({ userId }: LabInterfaceProps) {
     }
 
       // ── 2. Queue LLM-as-a-Judge evaluation asynchronously ────────────────────
-    //    The evaluation must not block the chat response. We send only the
-    //    traceId and let /api/evaluate hydrate the query/answer/chunks from
-    //    Langfuse and persist the scores to evaluation_logs in the background.
+    //    The evaluation must not block the chat response. We send the full
+    //    evaluation payload (query/answer/chunks/userId/documentId) that we
+    //    already have in hand from /api/chat, plus the traceId for Langfuse
+    //    score attachment. This avoids a round-trip to Langfuse to re-fetch
+    //    values we just produced — which previously raced ahead of Langfuse
+    //    Cloud's async ingest and returned a 404 (causing the 500 here).
+    const firstDocId = chatData.sources[0]?.document_id;
+
+    // If no chunks were retrieved, there is nothing meaningful to evaluate —
+    // skip the judge call rather than surface a confusing 400 to the user.
+    if (chatData.sources.length === 0) {
+      setChatLoading(false);
+      return;
+    }
+
     setEvalLoading(true);
 
     fetch("/api/evaluate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ traceId: chatData.traceId, async: true }),
+      body: JSON.stringify({
+        traceId: chatData.traceId,
+        async: true,
+        queryText: chatData.meta.query,
+        generatedAnswer: chatData.answer,
+        retrievedChunks: chatData.sources,
+        userId,
+        documentId: firstDocId,
+      }),
     })
       .then(async (res) => {
         if (!res.ok) {
