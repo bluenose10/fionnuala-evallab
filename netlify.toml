@@ -1,2 +1,8 @@
+[build]
+command = "npm run build"
+
+[[plugins]]
+package = "@netlify/plugin-nextjs"
+
 [build.environment]
 SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_SUPABASE_ANON_KEY,NEXT_PUBLIC_SUPABASE_URL"
