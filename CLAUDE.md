@@ -2,7 +2,38 @@
 
 ---
 
-## 0. Session Handoff — 2026-06-19 (Phase 10.1 + 10.2 Verification & Commit)
+## 0b. Session Handoff — 2026-06-22 (Phase 10.3 Merged to `main` + Production Deploy Verified)
+
+### COMPLETED THIS SESSION
+- **Phase 10.3 (Cost Mapping + Split Provider Strategy) — implemented & merged.** `CostAccumulator` threaded through all 4 OpenAI call sites (Chunking, Query, Answer, Judge); cost folded into existing `experiment_runs.metadata` JSONB — **no migration**. Experiment Leaderboard gained a **Cost** column and a **Cheapest Config** card.
+- **Split Provider Strategy applied** — `gpt-4o-mini` for high-volume chat generation (`/api/chat` + experiment answer site), `gpt-4o` retained exclusively for the Ragas judge (max JSON fidelity). `text-embedding-3-small` unchanged. **Kimi/GLM explicitly rejected** for B2B onboarding simplicity (OpenAI-only).
+- **Scaling fixes:** `EMBEDDING_BATCH_SIZE` 20 → **100** in both `/api/process` and the experiment runner. **Rule of Three restored** — 3 default chunk configs (256/32, 512/50, 1024/100).
+- **HNSW index migration drafted:** `supabase/migrations/phase-10.3-verify-hnsw-index.sql` (defensive — `schema.sql:144` already declares the index; includes `EXPLAIN` verification step).
+- **Netlify production build — PASS.** Full `next build` succeeded (20/20 routes, type-check clean, 21.6s). Initial deploy was blocked by Netlify's **post-build secrets scanner** flagging `LANGFUSE_BASE_URL` value in `.env.local.example`. **Root cause was a latent env-var naming bug:** Netlify was configured with `LANGFUSE_BASE_URL` (underscore) but the code reads `LANGFUSE_HOST` / `LANGFUSE_BASEURL` (no underscore) — meaning production Langfuse was silently falling back to the default host. **Fixed by:** (1) renaming the example var to `LANGFUSE_HOST`, (2) extending `SECRETS_SCAN_OMIT_KEYS` in `netlify.toml`.
+
+### CURRENT TRUTH (authoritative as of 2026-06-22 EOD — verified via `git log`)
+- **`main` is at Phase 10.3.** `git log main --oneline`:
+  - `1c03f9a` (HEAD → main, origin/main) fix: secrets scanner and langfuse host
+  - `04eba81` Phase 10.3 Complete: Split Provider Strategy, Batch 100, Rule of Three, HNSW Migration
+- **The §0 and §0a handoffs below are SUPERSEDED** on branch state. Their claim that `main` was "stuck at Phase 5 commit `923ed30`" and that the recall-purge PR was "pending user review" is **no longer true** — that work has been merged (commit history was likely squashed/rebased, giving new hashes; `c28ee06` from the old handoff does not appear in the top of `main`). Their technical details (Recall purge mechanics, drift reconciliation) remain accurate for audit trail.
+- **`origin/main` is synced with local `main`.** Nothing pending push.
+- **Metrics remain exclusively Faithfulness, Relevance, Precision.** Harmfulness still a static chart-only placeholder (score: 0), flagged with TODO.
+- **All §3 / §4 / §7 table edits below reflect Phase 10.3** (Split Provider models row, batch=100 guardrail, Phase 10 status line).
+
+### ENV-VAR NAMING (load-bearing — do not regress)
+The codebase reads `LANGFUSE_HOST` (official) or `LANGFUSE_BASEURL` (legacy alias, no underscore). It does **NOT** read `LANGFUSE_BASE_URL`. Configure Netlify/local env with one of the two accepted names. `netlify.toml` now omits all three Langfuse identifiers from secrets scanning.
+
+### REMAINING — NEXT SESSION
+- **User action (optional):** run `supabase/migrations/phase-10.3-verify-hnsw-index.sql` in Supabase SQL Editor and confirm the `EXPLAIN` output shows "Index Scan" not "Seq Scan".
+- **Phase 10 presentation layer:** architecture charts, case studies (still the only outstanding Phase 10 work).
+- **Pricing verification:** the rates in `src/lib/pricing.ts` are `VERIFY`-tagged June 2026 baselines, not scraped from the pricing page. Confirm before showing USD to paying B2B clients.
+- **Deferred:** Phase 11 (True Context Recall) — requires reference-answer schema + second judge pass. Phase 12 (Semantic Caching) — documented at file foot.
+
+---
+
+## 0. Session Handoff — 2026-06-19 (Phase 10.1 + 10.2 Verification & Commit) — ⚠️ SUPERSEDED ON BRANCH STATE BY §0b ABOVE
+
+> **Accuracy note (added 2026-06-22):** The branch-state claims below ("`phase-10.1-recall-purge` is pushed but NOT yet merged to `main`", "Local `main` still points at Phase 5 commit `923ed30`", "PR pending user opening it") are **no longer true as of 2026-06-22** — see §0b at the top of this file. The recall-purge work has been merged to `main` and Phase 10.3 has been committed on top. The technical/forensic content below (Recall purge mechanics, drift reconciliation) remains accurate for audit trail.
 
 ### COMPLETED THIS SESSION
 - **Phase 10.1 (Recall Purge) — verified in production DB:** User ran `supabase/migrations/phase-10.1-drop-context-recall.sql` in Supabase SQL Editor. Raw `information_schema` output confirmed `context_recall_score` removed from `evaluation_logs` and `avg_context_recall` removed from `experiment_runs`.
@@ -29,7 +60,9 @@ The earlier "Post Phase 10.1 Recall Purge" handoff (below) is preserved for audi
 
 ---
 
-## 0a. Session Handoff — 2026-06-19 (Post Phase 10.1 Recall Purge)
+## 0a. Session Handoff — 2026-06-19 (Post Phase 10.1 Recall Purge) — ⚠️ SUPERSEDED BY §0b ABOVE
+
+> **Accuracy note (added 2026-06-22):** All "PENDING — USER MUST DO" steps below have since been executed and verified — code deployed, migration run, leaderboard renders with 3-metric table, experiment runner inserts cleanly. See §0b at the top of this file for the current authoritative state.
 
 ### COMPLETED THIS SESSION
 - **Forensic Audit:** Discovered `context_recall` was a fabricated metric across the entire stack. The judge prompt (`src/lib/evaluation/judge.ts`) never computed Recall — every value was an aliased copy of `faithfulness`.
