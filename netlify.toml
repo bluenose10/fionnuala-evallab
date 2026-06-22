@@ -5,4 +5,8 @@ command = "npm run build"
 package = "@netlify/plugin-nextjs"
 
 [build.environment]
-SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_SUPABASE_ANON_KEY,NEXT_PUBLIC_SUPABASE_URL"
+# SECRETS_SCAN_OMIT_KEYS: URLs and public keys are not secrets — they're
+# designed to be exposed to the browser/SDK. Adding them here prevents
+# Netlify's post-build secrets scanner from false-flagging .env example
+# files or build output.
+SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_SUPABASE_ANON_KEY,NEXT_PUBLIC_SUPABASE_URL,LANGFUSE_BASE_URL,LANGFUSE_HOST,LANGFUSE_PUBLIC_KEY"
