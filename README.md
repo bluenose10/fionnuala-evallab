@@ -3,7 +3,7 @@
 > Accuracy-First AI. A scientific laboratory for **Grounded RAG** — measure
 > Faithfulness, Relevance & Precision instead of guessing. **Not a chatbot.**
 
-This repo contains a production-grade Next.js + Supabase RAG evaluation platform. Phases 1–9 are implemented, including the unified ingestion engine, retrieval, grounded synthesis, Ragas evaluation, Langfuse manual tracing, and OpenTelemetry auto-instrumentation.
+This repo contains a production-grade Next.js + Supabase RAG evaluation platform. Phases 1–10 are implemented, including the unified ingestion engine, retrieval, grounded synthesis, Ragas evaluation, Langfuse manual tracing, OpenTelemetry auto-instrumentation, and the Experimentation Engine with experiment-scoped cost mapping.
 
 ## Stack
 
@@ -13,7 +13,7 @@ This repo contains a production-grade Next.js + Supabase RAG evaluation platform
 | UI | Shadcn UI (New York / Slate), Recharts |
 | Auth/DB | Supabase (Postgres + pgvector), RLS |
 | RAG Engine | LlamaIndex Orchestration |
-| Models | OpenAI GPT-4o + text-embedding-3-small |
+| Models | Split Provider Strategy: gpt-4o-mini (Chat) + gpt-4o (Judge) + text-embedding-3-small (Embeddings) |
 | Evaluation | Ragas Framework — 3 Core Metrics (Faithfulness, Relevance, Context Precision) |
 | Tracing | Langfuse Observability (SDK + OpenTelemetry) |
 

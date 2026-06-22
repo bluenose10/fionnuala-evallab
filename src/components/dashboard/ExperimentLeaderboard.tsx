@@ -23,7 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Loader2, Play, Trophy } from "lucide-react";
+import { AlertCircle, Loader2, Play, Trophy, DollarSign } from "lucide-react";
 import {
   PolarAngleAxis,
   PolarGrid,
@@ -34,6 +34,7 @@ import {
   Legend,
   Tooltip,
 } from "recharts";
+import type { CostBreakdown } from "@/lib/cost-accumulator";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,14 @@ type ExperimentRun = {
   avg_context_precision: number;
   total_queries_tested: number;
   created_at: string;
+  // metadata is JSONB on experiment_runs. As of Phase 10.3 it may carry
+  // a structured cost breakdown. Optional for backward-compat with rows
+  // persisted before Phase 10.3 wired the CostAccumulator.
+  metadata?: {
+    match_count?: number;
+    cost?: CostBreakdown;
+    [key: string]: unknown;
+  };
 };
 
 type IndexedDocument = {
@@ -94,6 +103,19 @@ function formatPercent(value: number): string {
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString();
+}
+
+// Phase 10.3 — USD formatting for the cost column / Cheapest Config card.
+// Returns "—" for runs persisted before cost capture was wired in.
+function runCostUsd(run: ExperimentRun): number | null {
+  const total = run.metadata?.cost?.totalUsd;
+  return typeof total === "number" && Number.isFinite(total) ? total : null;
+}
+
+function formatUsd(value: number | null): string {
+  if (value === null) return "—";
+  // Sub-cent costs are common per-run; show 4 decimal places.
+  return `$${value.toFixed(4)}`;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -224,6 +246,22 @@ export function ExperimentLeaderboard() {
     );
   }, [latestRunsByConfig]);
 
+  // Phase 10.3 — lowest-USD configuration across the latest runs.
+  // Only runs that actually carry a cost breakdown are eligible; runs
+  // persisted before Phase 10.3 (cost === null) are excluded.
+  const cheapest = useMemo(() => {
+    const withCost = latestRunsByConfig.filter(
+      (run) => runCostUsd(run) !== null,
+    );
+    if (withCost.length === 0) return null;
+    return withCost.reduce((best, run) => {
+      const a = runCostUsd(run);
+      const b = runCostUsd(best);
+      // Non-null guaranteed by the filter above; guard for TS narrowing.
+      return a !== null && b !== null && a < b ? run : best;
+    });
+  }, [latestRunsByConfig]);
+
   const chartData: ChartRow[] = useMemo(() => {
     return METRIC_LABELS.map(({ key, label }) => {
       const row: ChartRow = { metric: label };
@@ -348,25 +386,60 @@ export function ExperimentLeaderboard() {
         </Card>
       )}
 
-      {/* Insights */}
+      {/* Insights — Winner + Cheapest Config side by side */}
       {!isLoading && !running && latestRunsByConfig.length > 0 && winner && (
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-2">
-            <Trophy className="h-5 w-5 text-primary" />
-            <CardTitle>Insights</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm">
-              <span className="font-semibold">Winner:</span>{" "}
-              {winner.configuration_name} with an average score of{" "}
-              <Badge variant="success">{formatPercent(averageScore(winner))}</Badge>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Based on the most recent run per configuration, averaged across
-              Faithfulness, Relevance, and Precision.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Card>
+            <CardHeader className="flex flex-row items-center gap-2">
+              <Trophy className="h-5 w-5 text-primary" />
+              <CardTitle>Best Quality</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm">
+                <span className="font-semibold">Winner:</span>{" "}
+                {winner.configuration_name} with an average score of{" "}
+                <Badge variant="success">{formatPercent(averageScore(winner))}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Based on the most recent run per configuration, averaged across
+                Faithfulness, Relevance, and Precision.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Phase 10.3 — lowest-USD configuration across latest runs. */}
+          <Card>
+            <CardHeader className="flex flex-row items-center gap-2">
+              <DollarSign className="h-5 w-5 text-primary" />
+              <CardTitle>Cheapest Config</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {cheapest ? (
+                <>
+                  <div className="text-sm">
+                    <span className="font-semibold">Lowest cost:</span>{" "}
+                    {cheapest.configuration_name} at{" "}
+                    <Badge variant="secondary">
+                      {formatUsd(runCostUsd(cheapest))}
+                    </Badge>{" "}
+                    <span className="text-muted-foreground">
+                      ({formatPercent(averageScore(cheapest))} quality)
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Total OpenAI spend for the most recent run of this
+                    configuration across chunking, query, answer, and judge calls.
+                  </p>
+                </>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  No cost data yet. Run a new experiment to populate per-site
+                  spend across chunking, query, answer, and judge calls.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Chart */}
@@ -429,6 +502,7 @@ export function ExperimentLeaderboard() {
                   <TableHead>Faithfulness</TableHead>
                   <TableHead>Relevance</TableHead>
                   <TableHead>Precision</TableHead>
+                  <TableHead>Cost</TableHead>
                   <TableHead>Queries</TableHead>
                   <TableHead>Timestamp</TableHead>
                 </TableRow>
@@ -458,6 +532,9 @@ export function ExperimentLeaderboard() {
                       </TableCell>
                       <TableCell>
                         {formatPercent(run.avg_context_precision)}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {formatUsd(runCostUsd(run))}
                       </TableCell>
                       <TableCell>{run.total_queries_tested}</TableCell>
                       <TableCell className="text-muted-foreground">

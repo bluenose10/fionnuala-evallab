@@ -109,7 +109,7 @@ The objective is to architect a production-grade AI system that moves beyond the
 | Frontend | Next.js 14+ (App Router), TypeScript, Tailwind CSS, Shadcn UI |
 | Backend / Database | Supabase (PostgreSQL + pgvector), Auth, and Storage |
 | RAG Orchestration | LlamaIndex — **Mandatory:** use `SentenceSplitter` from `@llamaindex/core` |
-| Models | OpenAI GPT-4o/5 (Reasoning) + `text-embedding-3-small` (1536-dimensional vectors) |
+| Models | Split Provider Strategy: `text-embedding-3-small` (1536-dimensional vectors), `gpt-4o-mini` (Chat Generation — high-volume, low-cost), `gpt-4o` (Ragas Evaluation Judge — maximum JSON fidelity / accuracy) |
 | Evaluation & Tracing | Ragas Framework + Langfuse (SDK + OpenTelemetry) |
 
 ---
@@ -127,7 +127,7 @@ Fetch Storage File → LlamaIndex Token Chunking → OpenAI Vectorization → At
 | Guardrail | Rule |
 |---|---|
 | **Orchestration Library Lock** | Strictly use LlamaIndex node parsers (`SentenceSplitter`). No custom string slicing. |
-| **Array Batch Limit (Anti-Crash)** | Process embeddings in deterministic batches of exactly **20 elements** to avoid OpenAI 429 errors and DB pool lag. |
+| **Array Batch Limit (Anti-Crash)** | Process embeddings in deterministic batches of exactly **100 elements** to minimize network latency, avoid OpenAI RPM limits, and optimize ingestion speed while preserving atomic data integrity. |
 | **Timeout Defence** | All route handlers must declare `export const runtime = "nodejs"` to bypass the 15-second serverless limit. |
 | **Data Integrity** | A text block is only saved if its 1536-dimensional vector is successfully generated. |
 
@@ -165,7 +165,7 @@ Similarity = 1 - (embedding <=> query_embedding)
 | 7 | Automated Evaluation Engine (Ragas Framework & Telemetry Setup) | ✅ COMPLETE — Automated scoring via Ragas (Faithfulness, Relevance & Precision) |
 | 8 | Advanced Observability & Deep Tracing (Langfuse SDK Integration) | ✅ COMPLETE — Full-stack tracing via parent-child spans in Langfuse |
 | 9 | Observability & Tracing (OpenTelemetry Instrumentation & Live Dashboard) | ✅ COMPLETE — `instrumentation.ts` hook, OpenAI auto-instrumentation, live Langfuse connection status dashboard |
-| 10 | The Experimentation Engine & Portfolio Polish | 🏗️ IN PROGRESS — Backend experiment runner (`/api/experiments/run`) verified live against reconciled schema (Phase 10.2); ExperimentLeaderboard live and verified; cost maps, architecture charts, and case studies (presentation layer) still pending |
+| 10 | The Experimentation Engine & Portfolio Polish | 🏗️ IN PROGRESS — Phase 10.3 (Cost Mapping + Split Provider Strategy) complete: CostAccumulator threaded through all 4 OpenAI sites, Cost column + Cheapest Config card on Leaderboard; gpt-4o-mini for chat generation, gpt-4o for Ragas judge; batch size 100; "Rule of Three" configs restored (256/32, 512/50, 1024/100). Architecture charts and case studies (presentation layer) still pending. |
 | 11 | True Context Recall (Proposed) | 📋 DEFERRED — Ground-truth/reference-answer-dependent metric. Requires a new schema for reference answers per query + a second judge pass. Fabricated `avg_context_recall` column purged in Phase 10.1 integrity restoration. Out of scope until reference-answer infrastructure is built. |
 
 ---
@@ -191,3 +191,6 @@ Similarity = 1 - (embedding <=> query_embedding)
 - **Ingestion Idempotency & No-Op Client:** Built safe placeholder detection in `src/lib/langfuse.ts` to prevent backend app crashes when API keys are absent, empty, or contain dummy values. The no-op client mirrors the Langfuse surface used by API routes so tracing becomes transparently optional.
 - **OpenTelemetry Hook Isolation:** `instrumentation.ts` is gated to `process.env.NEXT_RUNTIME === "nodejs"` and loads heavy OTel packages dynamically. It never interferes with the atomic ingestion or retrieval transactions.
 - **Server-Only Secret Handling:** The observability dashboard page declares `export const runtime = "nodejs"` and `export const dynamic = "force-dynamic"` so Langfuse credentials are read server-side and the live connection status is refreshed per request.
+ 
+ 
+ Phase 12: Semantic Caching (Vector-based FAQ matching to reduce OpenAI costs for high-traffic B2B clients)." This ensures you don't forget this brilliant idea when you are ready to build it.

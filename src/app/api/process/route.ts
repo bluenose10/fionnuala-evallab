@@ -16,10 +16,10 @@ import OpenAI from "openai";
 import fs from "fs/promises";
 import path from "path";
 
-// Spec requirement: process embeddings in fixed batches of exactly 20 elements.
-// Prevents OpenAI 429 rate-limit crashes on large documents and avoids
-// massive DB pool connection lag from unbounded sequential loops.
-const EMBEDDING_BATCH_SIZE = 20;
+// Phase 10.3 scaling fix: bumped 20 → 100. Minimizes network latency,
+// avoids OpenAI RPM limits, and ~5× faster ingestion while preserving
+// atomic data integrity (1:1 input→output ordering guaranteed by OpenAI).
+const EMBEDDING_BATCH_SIZE = 100;
 
 export async function POST(request: NextRequest) {
   // ── 1. Verify auth via anon client (reads session cookies) ─────────────────
@@ -101,10 +101,9 @@ export async function POST(request: NextRequest) {
 
     const chunkTexts = nodes.map((n) => n.getText());
 
-    // ── 5f. Generate embeddings in deterministic batches of 20 ───────────────
-    //    Spec requirement: never pass an entire array to Promise.all or a single
-    //    API call — process in fixed batches of EMBEDDING_BATCH_SIZE (20) to
-    //    avoid OpenAI 429 rate-limit crashes on large documents.
+    // ── 5f. Generate embeddings in deterministic batches of 100 ─────────────
+    //    Process in fixed batches of EMBEDDING_BATCH_SIZE (100) to minimize
+    //    network round-trips and avoid OpenAI RPM limits.
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const embeddings: number[][] = [];
 

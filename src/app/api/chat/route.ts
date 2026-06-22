@@ -1,5 +1,5 @@
 // Spec requirement: Node.js runtime to bypass the 15-second serverless
-// execution limit during retrieval + GPT-4o generation.
+// execution limit during retrieval + chat generation.
 export const runtime = "nodejs";
 
 // Windows dev: this machine cannot verify external TLS certs.
@@ -81,7 +81,10 @@ export async function POST(request: NextRequest) {
     input: { query, matchCount, documentId },
     metadata: {
       embeddingModel: "text-embedding-3-small",
-      generationModel: "gpt-4o",
+      // Split Provider Strategy (Phase 10.3): high-volume chat generation
+      // uses gpt-4o-mini for cost efficiency; the Ragas judge (separate
+      // call path in /api/evaluate) retains gpt-4o for max accuracy.
+      generationModel: "gpt-4o-mini",
     },
   });
 
@@ -158,19 +161,22 @@ export async function POST(request: NextRequest) {
   // ── 6. Build the grounded prompt with retrieved context ────────────────────
   const { messages } = buildRagAnswerPrompt(query, chunks);
 
-  // ── 7. Generate the answer with GPT-4o ─────────────────────────────────────
+  // ── 7. Generate the answer with gpt-4o-mini ────────────────────────────────
+  // Split Provider Strategy: high-volume user-facing chat generation uses
+  // gpt-4o-mini (≈10× cheaper than gpt-4o) while staying capable of grounded
+  // RAG answers. The Ragas judge path (/api/evaluate) keeps gpt-4o.
   const synthesisSpan = trace.span({ name: "synthesis", input: { messages } });
   let answer: string;
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       messages,
       temperature: 0.0, // Deterministic output for repeatable Ragas evaluation.
       max_tokens: 1024,
     });
 
     answer = completion.choices[0]?.message?.content?.trim() ?? "";
-    synthesisSpan.end({ output: { answer, model: "gpt-4o" } });
+    synthesisSpan.end({ output: { answer, model: "gpt-4o-mini" } });
   } catch (err) {
     console.error("[/api/chat] OpenAI generation error:", err);
     trace.update({
@@ -196,7 +202,7 @@ export async function POST(request: NextRequest) {
     answer,
     sources: chunks,
     meta: {
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       chunksRetrieved: chunks.length,
       query,
     },

@@ -13,6 +13,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { buildRagAnswerPrompt } from "@/lib/prompts/rag-answer";
 import { runRagasJudge } from "@/lib/evaluation/judge";
+import { CostAccumulator } from "@/lib/cost-accumulator";
+import type { CostBreakdown } from "@/lib/cost-accumulator";
 import { Document, SentenceSplitter } from "llamaindex";
 import pdfParse from "pdf-parse";
 import OpenAI from "openai";
@@ -59,14 +61,21 @@ interface ConfigurationResult {
     avg_context_precision: number;
   };
   total_queries_tested: number;
+  cost: CostBreakdown;
 }
 
 const DEFAULT_CONFIGURATIONS: ExperimentConfiguration[] = [
   { name: "Small chunks (256 / 32)", chunkSize: 256, chunkOverlap: 32, matchCount: 5 },
   { name: "Medium chunks (512 / 50)", chunkSize: 512, chunkOverlap: 50, matchCount: 5 },
+  // Large config (1024 / 100) restored in Phase 10.3 to complete the
+  // "Rule of Three" for stakeholder A/B comparisons. Token-sized chunks.
+  { name: "Large chunks (1024 / 100)", chunkSize: 1024, chunkOverlap: 100, matchCount: 5 },
 ];
 
-const EMBEDDING_BATCH_SIZE = 20;
+// Phase 10.3 scaling fix: bumped 20 → 100. Minimizes network latency,
+// avoids OpenAI RPM limits, and ~5× faster ingestion while preserving
+// atomic data integrity (1:1 input→output ordering guaranteed by OpenAI).
+const EMBEDDING_BATCH_SIZE = 100;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -98,6 +107,7 @@ async function processDocument(
 ): Promise<ConfigurationResult> {
   const serviceClient = createServiceClient();
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const cost = new CostAccumulator();
 
   // 1. Fetch document metadata and storage file.
   const { data: doc, error: docError } = await serviceClient
@@ -146,11 +156,17 @@ async function processDocument(
   const embeddings: number[][] = [];
   for (let i = 0; i < chunkTexts.length; i += EMBEDDING_BATCH_SIZE) {
     const batch = chunkTexts.slice(i, i + EMBEDDING_BATCH_SIZE);
-    const { data: embedData } = await openai.embeddings.create({
+    const { data: embedData, usage: embedUsage } = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: batch,
     });
     embeddings.push(...embedData.map((e) => e.embedding));
+
+    // Capture cost at site 1 — chunk embeddings (input-only model).
+    cost.record("chunking", "text-embedding-3-small", {
+      promptTokens: embedUsage?.prompt_tokens ?? 0,
+      completionTokens: 0,
+    });
   }
 
   const chunks: ChunkWithEmbedding[] = chunkTexts.map((content, i) => ({
@@ -169,11 +185,20 @@ async function processDocument(
     if (!queryTrimmed) continue;
 
     // Embed query.
-    const { data: queryEmbedData } = await openai.embeddings.create({
+    const {
+      data: queryEmbedData,
+      usage: queryEmbedUsage,
+    } = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: queryTrimmed,
     });
     const queryEmbedding = queryEmbedData[0].embedding;
+
+    // Capture cost at site 2 — query embedding (input-only model).
+    cost.record("query", "text-embedding-3-small", {
+      promptTokens: queryEmbedUsage?.prompt_tokens ?? 0,
+      completionTokens: 0,
+    });
 
     // Retrieve top-k chunks by cosine similarity.
     const ranked = chunks
@@ -184,20 +209,28 @@ async function processDocument(
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, matchCount);
 
-    // Synthesize answer.
+    // Synthesize answer — Split Provider Strategy (Phase 10.3).
+    // High-volume answer generation uses gpt-4o-mini (≈10× cheaper), mirroring
+    // production /api/chat. The Ragas judge (site 4) retains gpt-4o for accuracy.
     const { messages } = buildRagAnswerPrompt(
       queryTrimmed,
       ranked.map((c) => ({ content: c.content })),
     );
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       messages,
       temperature: 0.0,
       max_tokens: 1024,
     });
 
     const answer = completion.choices[0]?.message?.content?.trim() ?? "";
+
+    // Capture cost at site 3 — RAG answer completion (gpt-4o-mini, input + output).
+    cost.record("answer", "gpt-4o-mini", {
+      promptTokens: completion.usage?.prompt_tokens ?? 0,
+      completionTokens: completion.usage?.completion_tokens ?? 0,
+    });
 
     // Evaluate with Ragas judge.
     const scores = await runRagasJudge(
@@ -210,6 +243,10 @@ async function processDocument(
         similarity: c.similarity,
       })),
     );
+
+    // Capture cost at site 4 — Ragas judge completion (gpt-4o, input + output).
+    // .usage is returned by the widened runRagasJudge signature (Phase 10.3).
+    cost.record("judge", "gpt-4o", scores.usage);
 
     queryResults.push({
       query: queryTrimmed,
@@ -236,6 +273,7 @@ async function processDocument(
     queryResults,
     averages,
     total_queries_tested: queryResults.length,
+    cost: cost.snapshot(),
   };
 }
 
@@ -302,7 +340,7 @@ export async function POST(request: NextRequest) {
           chunk_size: config.chunkSize,
           chunk_overlap: config.chunkOverlap,
           prompt_template: "default-rag-answer",
-          model_name: "gpt-4o",
+          model_name: "gpt-4o-mini",
           avg_faithfulness: result.averages.avg_faithfulness,
           avg_answer_relevance: result.averages.avg_answer_relevance,
           avg_context_precision: result.averages.avg_context_precision,
@@ -314,6 +352,9 @@ export async function POST(request: NextRequest) {
               scores: r.scores,
               rationale: r.rationale,
             })),
+            // Phase 10.3 — folded into the existing JSONB metadata column.
+            // No migration: structured cost breakdown for the leaderboard UI.
+            cost: result.cost,
           },
         });
 
@@ -344,6 +385,8 @@ export async function POST(request: NextRequest) {
       chunkOverlap: r.configuration.chunkOverlap,
       totalQueries: r.total_queries_tested,
       averages: r.averages,
+      costUsd: r.cost.totalUsd,
+      costBreakdown: r.cost,
     })),
   });
 }

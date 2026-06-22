@@ -14,6 +14,17 @@ export interface EvaluationScores {
   rationale: string;
 }
 
+/** OpenAI token usage captured from the judge completion. */
+export interface JudgeUsage {
+  promptTokens: number;
+  completionTokens: number;
+}
+
+/** Extended return type including token usage for cost tracking (Phase 10.3). */
+export interface JudgeResult extends EvaluationScores {
+  usage: JudgeUsage;
+}
+
 const JUDGE_SYSTEM_PROMPT = `You are an objective LLM-as-a-Judge compliance auditor for a RAG evaluation platform.
 Your task is to evaluate a retrieval-augmented generation interaction and return a single JSON object.
 
@@ -93,7 +104,7 @@ export async function runRagasJudge(
   generatedAnswer: string,
   retrievedChunks: RetrievedChunk[],
   openaiApiKey?: string,
-): Promise<EvaluationScores> {
+): Promise<JudgeResult> {
   const openai = new OpenAI({
     apiKey: openaiApiKey ?? process.env.OPENAI_API_KEY,
   });
@@ -124,10 +135,17 @@ export async function runRagasJudge(
     );
   }
 
+  // Capture OpenAI usage for cost tracking (Phase 10.3).
+  const usage = {
+    promptTokens: completion.usage?.prompt_tokens ?? 0,
+    completionTokens: completion.usage?.completion_tokens ?? 0,
+  };
+
   return {
     faithfulness: clampScore(parsed.faithfulness),
     answer_relevance: clampScore(parsed.answer_relevance),
     context_precision: clampScore(parsed.context_precision),
     rationale: parsed.rationale,
+    usage,
   };
 }

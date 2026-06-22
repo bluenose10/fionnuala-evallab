@@ -32,7 +32,7 @@ $$\text{Fetch Storage File} \longrightarrow \text{LlamaIndex Token Chunking} \lo
 
 ### Senior Execution Guardrails
 1.  **Orchestration Library Lock:** To guarantee structural consistency across our vector maps, developers must strictly use LlamaIndex node parsers (specifically `SentenceSplitter` from the native `@llamaindex/core` or `llamaindex` package) rather than writing custom string slices or splitting by arbitrary character lengths.
-2.  **The Array Batch Limit (Anti-Crash Loop):** Processing text chunks sequentially creates massive database pool connection lag, while passing an entire large document array into `Promise.all()` simultaneously triggers immediate OpenAI `429 Rate Limit` crashes. The ingestion loop must process embeddings in fixed, deterministic batches of exactly **20 elements** per loop iteration.
+2.  **The Array Batch Limit (Anti-Crash Loop):** Processing text chunks sequentially creates massive database pool connection lag, while passing an entire large document array into `Promise.all()` simultaneously triggers immediate OpenAI `429 Rate Limit` crashes. The ingestion loop must process embeddings in fixed, deterministic batches of exactly **100 elements** per loop iteration.
 3.  **Timeout Defense:** To protect intensive document text extractions from being cut off by standard serverless limits, the route handler must explicitly declare `export const runtime = "nodejs";` at the top of the file to run within a dedicated long-running Node.js execution layer.
 
 ---
@@ -55,9 +55,9 @@ While user-facing routes are locked tight with active Row Level Security (`ALTER
 3.  **Processing & Text Extraction:** Unified data pipelines turning document inputs into text streams.
 4.  **Embeddings:** Generating 1536-dimensional coordinates using OpenAI `text-embedding-3-small`.
 5.  **Retrieval:** Executing compiled database RPC matches using cosine similarity algorithms.
-6.  **AI Answers:** Grounded prompt execution parsing context arrays into user answers.
-7.  **Evaluation:** Automatic parsing of outputs through the Ragas mathematical framework.
-8.  **Experimentation:** System dashboards evaluating multi-tenant chunk configurations.
+6.  **AI Answers:** Grounded prompt execution parsing context arrays into user answers via `gpt-4o-mini` (Split Provider Strategy — high-volume, low-cost).
+7.  **Evaluation:** Automatic parsing of outputs through the Ragas mathematical framework using `gpt-4o` as the Ragas judge (maximum accuracy).
+8.  **Experimentation:** System dashboards evaluating multi-tenant chunk configurations (256, 512, 1024 token chunks).
 9.  **Observability:** Full-stack tracing via hierarchical parent-child spans in Langfuse.
 10. **Portfolio Polish:** Compiling production case studies showing metrics, cost maps, and architecture charts. 
 

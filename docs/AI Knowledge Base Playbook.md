@@ -31,7 +31,7 @@ The platform evaluates RAG configurations using three Ragas metrics:
 | Frontend | Next.js 14+ (App Router), TypeScript, Tailwind CSS, Shadcn UI |
 | Backend / Database | Supabase (PostgreSQL + pgvector), Auth, Storage, RLS |
 | RAG Orchestration | LlamaIndex — `SentenceSplitter` (mandatory) |
-| Models | OpenAI GPT-4o (Reasoning) + `text-embedding-3-small` (1536 dims) |
+| Models | Split Provider Strategy: `gpt-4o-mini` (Chat Generation), `gpt-4o` (Ragas Judge), `text-embedding-3-small` (1536-dim embeddings) |
 | Evaluation | Ragas Framework — 3 Core Metrics |
 | Observability | Langfuse (SDK + OpenTelemetry) |
 
@@ -43,9 +43,16 @@ The platform evaluates RAG configurations using three Ragas metrics:
 All tables enforce Supabase Row Level Security (RLS). Direct data reads are restricted via `auth.uid() = user_id`. Background ingestion and evaluation tasks use a privileged `supabaseAdmin` client via `SUPABASE_SERVICE_ROLE_KEY`.
 
 ### Unified Ingestion (Atomic Transaction)
-Document processing executes in a single atomic pipeline: Fetch Storage File → LlamaIndex Token Chunking → OpenAI Vectorization → Atomic DB Insert. No decoupled, multi-hop asynchronous architectures. Embeddings are batched at exactly 20 chunks to avoid OpenAI 429 rate-limit errors.
+Document processing executes in a single atomic pipeline: Fetch Storage File → LlamaIndex Token Chunking → OpenAI Vectorization → Atomic DB Insert. No decoupled, multi-hop asynchronous architectures. Embeddings are batched at exactly 100 chunks per request to minimize network latency, avoid OpenAI RPM limits, and optimize ingestion speed while preserving atomic data integrity.
 
 ### Observability Without Pollution
 OpenTelemetry and Langfuse instrumentation live exclusively in `instrumentation.ts` and `src/lib/langfuse.ts`. Tracing code must never be inlined inside business logic (`/api/process`, `/api/retrieve`, `/api/chat`, `/api/evaluate`).
+
+### Current Phase (10.3): Experiment-Scoped Cost Mapping
+Phases 1–10 are implemented. The platform is currently in Phase 10.3, which adds the Experiment-Scoped Cost Mapping architecture on top of the Experimentation Engine:
+
+* **Split Provider Strategy** — `gpt-4o-mini` for high-volume chat generation (≈10× cheaper than `gpt-4o`), `gpt-4o` retained exclusively for the Ragas judge (maximum JSON fidelity / hallucination detection), `text-embedding-3-small` unchanged for embeddings (DB locked to 1536 dims).
+* **Rule of Three** — The experiment runner A/B tests three token-sized chunk configurations: **256 / 32**, **512 / 50**, and **1024 / 100** (chunk size / overlap, measured in tokens via LlamaIndex `SentenceSplitter`).
+* **CostAccumulator** — Threaded through all four OpenAI call sites (Chunking, Query, Answer, Judge) and folded into the existing `experiment_runs.metadata` JSONB column. The Experiment Leaderboard surfaces a **Cost** column and a **Cheapest Config** card alongside the existing best-quality ranking.
 
 > **Technical status, phase progress, environment credentials, execution guardrails, and Windows development notes are maintained in [CLAUDE.md](../../CLAUDE.md).**

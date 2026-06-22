@@ -27,7 +27,7 @@ Fetch Storage File ──▶ LlamaIndex Token Chunking ──▶ OpenAI Vectoriz
 Senior Execution Guardrails: 
 
 Orchestration Library Lock:  We utilize  LlamaIndex node parsers  (specifically SentenceSplitter from @llamaindex/core) to ensure uniform chunk mapping across vector maps, avoiding the inconsistency of custom string slicing.
-The Array Batch Limit:  To prevent  database pool connection lag  and avoid  OpenAI 429 Rate Limit crashes , the engine processes embeddings in deterministic batches of exactly  20 elements  per iteration.
+The Array Batch Limit:  To prevent  database pool connection lag  and avoid  OpenAI 429 Rate Limit crashes , the engine processes embeddings in deterministic batches of exactly  100 elements  per iteration.
 Timeout Defense:  To protect intensive extractions from serverless execution limits, the route handler is declared with export const runtime = "nodejs", utilizing a dedicated long-running execution layer.
  
  6. Programmatic Retrieval and Matching Logic
@@ -35,16 +35,16 @@ Phase 5 pushes vector searching into a compiled PostgreSQL stored procedure. Thi
  
  7. The 10-Phase Roadmap and Current Project Status
 Progress is strictly gated behind infrastructure verification.
-Project Setup:  Next.js skeleton with live Supabase Auth and verified middleware. ✅  FUNCTIONAL
+Project Setup:  Next.js skeleton with live Supabase Auth and verified middleware. ✅  COMPLETE
 File Management:  Ingestion hooks wired to Storage with metadata logging and UI feedback. ✅  COMPLETE
 Processing & Text Extraction:  Unified data pipelines turning inputs into atomic text streams. ✅  COMPLETE
 Embeddings:  Generating 1536-dimensional coordinates via text-embedding-3-small. ✅  COMPLETE
-Retrieval:  Compiling database RPC matches and building secure server-side routes. 🏗️  ACTIVE
-AI Answers:  Grounded prompt execution parsing context arrays into user answers. ⏳  PENDING
-Evaluation:  Automated output parsing and scoring through the Ragas framework. ⏳  PENDING
-Experimentation:  System dashboards evaluating multi-tenant chunk and prompt configurations. ⏳  PENDING
-Observability:  Full-stack tracing via hierarchical parent-child spans in Langfuse. ⏳  PENDING
-Portfolio Polish:  Compiling case studies showing metrics, cost maps, and architecture charts. ⏳  PENDING
+Retrieval:  Compiling database RPC matches and building secure server-side routes. ✅  COMPLETE
+AI Answers:  Grounded prompt execution via gpt-4o-mini (Split Provider Strategy). ✅  COMPLETE
+Evaluation:  Automated Ragas scoring (Faithfulness, Relevance, Precision) using gpt-4o judge. ✅  COMPLETE
+Experimentation:  Experiment Leaderboard with "Rule of Three" configs (256/32, 512/50, 1024/100), cost mapping, and Cheapest Config card. ✅  COMPLETE (Phase 10.3)
+Observability:  Full-stack tracing via hierarchical parent-child spans in Langfuse + OpenTelemetry. ✅  COMPLETE
+Portfolio Polish:  Compiling case studies showing metrics, cost maps, and architecture charts. 🏗️  IN PROGRESS (Phase 10)
  
  8. System Credentials and Security Hydration
 The infrastructure is secured via environment variable gating and multi-tenant isolation boundaries.Environment Credentials Status| Variable | Status | Purpose || ------ | ------ | ------ || NEXT_PUBLIC_SUPABASE_URL | ACTIVE | Core Database/Storage URL || NEXT_PUBLIC_SUPABASE_ANON_KEY | ACTIVE | Client-side access || SUPABASE_SERVICE_ROLE_KEY | ACTIVE | Server-side ingestion bypass (Phase 3+) || OPENAI_API_KEY | ACTIVE | text-embedding-3-small and Inference || LANGFUSE_KEYS | PENDING | Observability (Active in Phase 9) |
