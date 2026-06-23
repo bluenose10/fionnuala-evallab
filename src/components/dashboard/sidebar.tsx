@@ -4,10 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  FileText,
   FlaskConical,
   LayoutDashboard,
   Trophy,
-  Upload,
   type LucideIcon,
 } from "lucide-react";
 
@@ -21,19 +21,10 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { title: "Overview", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Document Manager", href: "/dashboard/upload", icon: Upload },
-  { title: "QA & Retrieval Lab", href: "/dashboard/lab", icon: FlaskConical },
-  { title: "Evaluation Hub", href: "/dashboard/evaluation", icon: Activity },
-  {
-    title: "Experiment Leaderboard",
-    href: "/dashboard/experiments",
-    icon: Trophy,
-  },
-  {
-    title: "Observability",
-    href: "/dashboard/observability",
-    icon: Activity,
-  },
+  { title: "Documents", href: "/dashboard/upload", icon: FileText },
+  { title: "QA Lab", href: "/dashboard/lab", icon: FlaskConical },
+  { title: "Experiments", href: "/dashboard/experiments", icon: Trophy },
+  { title: "Observability", href: "/dashboard/observability", icon: Activity },
 ];
 
 export function Sidebar() {

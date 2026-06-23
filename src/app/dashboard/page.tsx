@@ -1,68 +1,112 @@
-import {
-  Activity,
-  CheckCircle2,
-  FileText,
-  Target,
-  TrendingUp,
-} from "lucide-react";
+import { DollarSign, FileText, FlaskConical, Target } from "lucide-react";
 
+import { createClient } from "@/lib/supabase/server";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import type { CostBreakdown } from "@/lib/cost-accumulator";
 
-const stats = [
-  {
-    title: "Documents Indexed",
-    value: "—",
-    hint: "Phase 2: ingestion",
-    icon: FileText,
-  },
-  {
-    title: "Avg. Faithfulness",
-    value: "—",
-    hint: "Phase 7: Ragas",
-    icon: Target,
-  },
-  {
-    title: "Experiments Run",
-    value: "—",
-    hint: "Phase 10: leaderboard",
-    icon: TrendingUp,
-  },
-  {
-    title: "Traces Captured",
-    value: "—",
-    hint: "Phase 9: Langfuse OTel",
-    icon: Activity,
-  },
-];
+function formatFaithfulness(value: number | null): string {
+  if (value === null) return "—";
+  return `${(value * 100).toFixed(1)}%`;
+}
 
-const roadmap = [
-  { phase: 1, title: "Project Setup", status: "done" },
-  { phase: 2, title: "File Uploads", status: "done" },
-  { phase: 3, title: "Document Processing", status: "done" },
-  { phase: 4, title: "Vectorization", status: "done" },
-  { phase: 5, title: "Retrieval", status: "done" },
-  { phase: 6, title: "AI Answers", status: "done" },
-  { phase: 7, title: "Evaluation System", status: "done" },
-  { phase: 8, title: "Observability (Langfuse SDK)", status: "done" },
-  { phase: 9, title: "Observability & Tracing (OpenTelemetry)", status: "done" },
-  { phase: 10, title: "Experiments & Portfolio Polish", status: "current" },
-];
+function formatCost(usd: number): string {
+  if (usd === 0) return "$0.00";
+  return `$${usd.toFixed(2)}`;
+}
 
-export default function DashboardOverview() {
+async function fetchOverviewMetrics() {
+  const supabase = createClient();
+
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const [
+    { count: documentsIndexed },
+    { data: evalRows },
+    { count: experimentsRun },
+    { data: experimentRows },
+  ] = await Promise.all([
+    supabase
+      .from("documents")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "indexed"),
+    supabase.from("evaluation_logs").select("faithfulness_score"),
+    supabase
+      .from("experiment_runs")
+      .select("*", { count: "exact", head: true }),
+    supabase
+      .from("experiment_runs")
+      .select("metadata, created_at")
+      .gte("created_at", monthStart.toISOString()),
+  ]);
+
+  const faithfulnessScores = (evalRows ?? [])
+    .map((row) => Number(row.faithfulness_score))
+    .filter((score) => Number.isFinite(score));
+
+  const avgFaithfulness =
+    faithfulnessScores.length > 0
+      ? faithfulnessScores.reduce((sum, score) => sum + score, 0) /
+        faithfulnessScores.length
+      : null;
+
+  const monthlyCostUsd = (experimentRows ?? []).reduce((sum, row) => {
+    const metadata = row.metadata as { cost?: CostBreakdown } | null;
+    const totalUsd = metadata?.cost?.totalUsd;
+    return sum + (typeof totalUsd === "number" ? totalUsd : 0);
+  }, 0);
+
+  return {
+    documentsIndexed: documentsIndexed ?? 0,
+    avgFaithfulness,
+    experimentsRun: experimentsRun ?? 0,
+    monthlyCostUsd,
+  };
+}
+
+export default async function DashboardOverview() {
+  const metrics = await fetchOverviewMetrics();
+
+  const stats = [
+    {
+      title: "Documents Indexed",
+      value: String(metrics.documentsIndexed),
+      hint: "Ready for retrieval",
+      icon: FileText,
+    },
+    {
+      title: "Avg. Faithfulness",
+      value: formatFaithfulness(metrics.avgFaithfulness),
+      hint: "Across QA evaluations",
+      icon: Target,
+    },
+    {
+      title: "Experiments Run",
+      value: String(metrics.experimentsRun),
+      hint: "Configuration comparisons",
+      icon: FlaskConical,
+    },
+    {
+      title: "Monthly Cost (USD)",
+      value: formatCost(metrics.monthlyCostUsd),
+      hint: "Experiment spend this month",
+      icon: DollarSign,
+    },
+  ];
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Overview</h1>
         <p className="text-muted-foreground">
-          Your AI evaluation workspace. Metrics populate as you progress
-          through the build.
+          Monitor document coverage, evaluation quality, and platform usage at
+          a glance.
         </p>
       </div>
 
@@ -82,43 +126,6 @@ export default function DashboardOverview() {
           </Card>
         ))}
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Build Roadmap</CardTitle>
-          <CardDescription>
-            10-phase plan from skeleton to scientific RAG platform.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-2 sm:grid-cols-2">
-          {roadmap.map((item) => (
-            <div
-              key={item.phase}
-              className="flex items-center justify-between rounded-md border px-4 py-3"
-            >
-              <div className="flex items-center gap-3">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-semibold">
-                  {item.phase}
-                </span>
-                <span className="text-sm font-medium">{item.title}</span>
-              </div>
-              {item.status === "done" ? (
-                <Badge variant="success" className="gap-1">
-                  <CheckCircle2 className="h-3 w-3" />
-                  Done
-                </Badge>
-              ) : item.status === "current" ? (
-                <Badge variant="default" className="gap-1">
-                  <CheckCircle2 className="h-3 w-3" />
-                  Current
-                </Badge>
-              ) : (
-                <Badge variant="secondary">Planned</Badge>
-              )}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
     </div>
   );
 }

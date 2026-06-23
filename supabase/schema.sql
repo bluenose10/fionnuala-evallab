@@ -158,7 +158,7 @@ create index if not exists document_chunks_embedding_hnsw_idx
 create or replace function match_document_chunks(
   query_embedding    vector(1536),
   match_count        int     default 3,
-  match_threshold    float   default 0.0,
+  match_threshold    float   default 0.2,
   filter_user_id     uuid    default null,
   filter_document_id uuid    default null
 )

@@ -3,12 +3,12 @@
 -- filtered at the database layer. Default Top-K lowered to 3.
 --
 -- Run this in Supabase SQL Editor before deploying API changes that pass
--- match_threshold: 0.5 from /api/chat and /api/retrieve.
+-- match_threshold: 0.2 from /api/chat and /api/retrieve.
 
 create or replace function match_document_chunks(
   query_embedding    vector(1536),
   match_count        int     default 3,
-  match_threshold    float   default 0.0,
+  match_threshold    float   default 0.2,
   filter_user_id     uuid    default null,
   filter_document_id uuid    default null
 )
