@@ -152,7 +152,7 @@ async function processDocument(
 
   const chunkTexts = nodes.map((n) => n.getText());
 
-  // 4. Embed chunks in defensive batches of 20.
+  // 4. Embed chunks in defensive batches of 100.
   const embeddings: number[][] = [];
   for (let i = 0; i < chunkTexts.length; i += EMBEDDING_BATCH_SIZE) {
     const batch = chunkTexts.slice(i, i + EMBEDDING_BATCH_SIZE);

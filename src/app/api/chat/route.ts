@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { query, matchCount = 5, documentId } = body;
+  const { query, matchCount = 3, documentId } = body;
 
   // ── 3. Initialize unified parent trace for the full RAG lifecycle ───────────
   //    This trace is propagated to /api/evaluate via traceId so Ragas scores
@@ -120,7 +120,8 @@ export async function POST(request: NextRequest) {
 
   const rpcParams: Record<string, unknown> = {
     query_embedding: queryEmbedding,
-    match_count: matchCount,
+    match_count: 3,
+    match_threshold: 0.5,
     filter_user_id: user.id,
   };
   if (documentId) {

@@ -49,9 +49,11 @@ function isValidLangfuseKey(key: string | undefined): key is string {
  */
 const createNoOpTrace = () => {
   const self = {
+    id: undefined as string | undefined,
     span: () => self,
     score: () => self,
     update: () => self,
+    end: () => self,
     event: () => self,
     generation: () => self,
   };

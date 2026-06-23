@@ -18,7 +18,7 @@ To maintain production-grade integrity and prevent system regressions, you must 
 
 - **Unified Ingestion Engine:** All document processing (Fetch → LlamaIndex Chunking → OpenAI Vectorization → Atomic Insert) must reside in the single `/api/process` route. We explicitly reject decoupled, multi-hop asynchronous architectures.
 
-- **The Array Batch Limit:** To prevent database pool lag and OpenAI 429 Rate Limit crashes, you must process embeddings in deterministic batches of **exactly 20 elements per loop iteration**.
+- **The Array Batch Limit:** To prevent database pool lag and OpenAI 429 Rate Limit crashes, you must process embeddings in deterministic batches of **exactly 100 elements per loop iteration**.
 
 - **Timeout Defense:** All intensive route handlers must declare `export const runtime = "nodejs"` to bypass standard 15-second serverless execution limits.
 

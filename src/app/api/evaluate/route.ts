@@ -9,6 +9,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { langfuse, flushLangfuse } from "@/lib/langfuse";
 import {
@@ -247,7 +248,21 @@ async function runEvaluation(params: {
 
 // ── Route Handler ─────────────────────────────────────────────────────────────
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export async function POST(request: NextRequest) {
+  // ── 0. Auth — verify session via cookie-scoped anon client ──────────────────
+  const anonClient = createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await anonClient.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   // ── 1. Parse and validate inbound data contract ─────────────────────────────
   let body: EvaluateRequest;
   try {
@@ -273,6 +288,13 @@ export async function POST(request: NextRequest) {
     retrievedChunks: providedRetrievedChunks,
     async: asyncMode,
   } = body;
+
+  if (!UUID_REGEX.test(traceId.trim())) {
+    return NextResponse.json(
+      { error: "traceId must be a valid UUID" },
+      { status: 400 },
+    );
+  }
 
   // ── 2. Hydrate evaluation inputs from Langfuse when overrides are missing ────
   let queryText = providedQueryText ?? "";

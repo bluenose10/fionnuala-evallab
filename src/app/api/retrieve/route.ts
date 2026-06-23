@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { query, matchCount = 5, documentId } = body;
+  const { query, matchCount = 3, documentId } = body;
 
   // ── 3. Embed the query via OpenAI text-embedding-3-small ────────────────────
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -88,7 +88,8 @@ export async function POST(request: NextRequest) {
 
   const rpcParams: Record<string, unknown> = {
     query_embedding: queryEmbedding,
-    match_count:     matchCount,
+    match_count:     3,
+    match_threshold: 0.5,
     filter_user_id:  user.id,
   };
   if (documentId) {

@@ -88,7 +88,7 @@ export function LabInterface({ userId }: LabInterfaceProps) {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: query.trim(), matchCount: 5 }),
+        body: JSON.stringify({ query: query.trim(), matchCount: 3 }),
       });
 
       if (!res.ok) {

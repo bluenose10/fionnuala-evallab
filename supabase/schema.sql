@@ -151,12 +151,14 @@ create index if not exists document_chunks_embedding_hnsw_idx
 -- ─────────────────────────────────────────────────────────────
 
 -- Cosine similarity search over document_chunks.
--- Returns the top match_count chunks closest to query_embedding.
--- User isolation is enforced at the function level via filter_user_id
--- (defence-in-depth on top of the service-role client that calls it).
+-- Returns the top match_count chunks closest to query_embedding that meet
+-- match_threshold (cosine similarity >= threshold). User isolation is enforced
+-- at the function level via filter_user_id (defence-in-depth on top of the
+-- service-role client that calls it).
 create or replace function match_document_chunks(
   query_embedding    vector(1536),
-  match_count        int     default 5,
+  match_count        int     default 3,
+  match_threshold    float   default 0.0,
   filter_user_id     uuid    default null,
   filter_document_id uuid    default null
 )
@@ -177,6 +179,8 @@ as $func$
     (filter_user_id     is null or dc.user_id     = filter_user_id)
     and
     (filter_document_id is null or dc.document_id = filter_document_id)
+    and
+    (1 - (dc.embedding <=> query_embedding)) >= match_threshold
   order by dc.embedding <=> query_embedding
   limit match_count;
 $func$
