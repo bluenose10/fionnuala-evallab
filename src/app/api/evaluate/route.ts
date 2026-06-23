@@ -263,6 +263,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // SECURITY: Always use the session-verified user — never trust body.userId.
+  const safeUserId = user.id;
+
   // ── 1. Parse and validate inbound data contract ─────────────────────────────
   let body: EvaluateRequest;
   try {
@@ -282,7 +285,7 @@ export async function POST(request: NextRequest) {
   const {
     traceId,
     documentId: providedDocumentId,
-    userId: providedUserId,
+    // userId from body is intentionally ignored — safeUserId (from session) is used instead.
     queryText: providedQueryText,
     generatedAnswer: providedGeneratedAnswer,
     retrievedChunks: providedRetrievedChunks,
@@ -300,14 +303,12 @@ export async function POST(request: NextRequest) {
   let queryText = providedQueryText ?? "";
   let generatedAnswer = providedGeneratedAnswer ?? "";
   let retrievedChunks = providedRetrievedChunks ?? [];
-  let userId = providedUserId;
   let documentId = providedDocumentId;
 
   const needsHydration =
     !queryText ||
     !generatedAnswer ||
     retrievedChunks.length === 0 ||
-    !userId ||
     !documentId;
 
   if (needsHydration) {
@@ -317,7 +318,6 @@ export async function POST(request: NextRequest) {
       generatedAnswer = generatedAnswer || traceData.generatedAnswer;
       retrievedChunks =
         retrievedChunks.length > 0 ? retrievedChunks : traceData.retrievedChunks;
-      userId = userId || traceData.userId;
       documentId = documentId || traceData.documentId;
     } catch (err) {
       console.error("[EVALUATION_ENGINE_ERROR] Trace hydration failed:", err);
@@ -338,16 +338,33 @@ export async function POST(request: NextRequest) {
     !queryText.trim() ||
     !generatedAnswer.trim() ||
     retrievedChunks.length === 0 ||
-    !documentId ||
-    !userId
+    !documentId
   ) {
     return NextResponse.json(
       {
         error:
-          "Missing required evaluation fields. Provide queryText, generatedAnswer, retrievedChunks, documentId, and userId, or ensure the Langfuse trace contains them.",
+          "Missing required evaluation fields. Provide queryText, generatedAnswer, retrievedChunks, and documentId, or ensure the Langfuse trace contains them.",
       },
       { status: 400 },
     );
+  }
+
+  // SECURITY: Verify the resolved documentId belongs to the authenticated user.
+  // This check runs after hydration so documentId is always fully resolved.
+  {
+    const { data: doc, error: docError } = await anonClient
+      .from("documents")
+      .select("id")
+      .eq("id", documentId)
+      .eq("user_id", safeUserId)
+      .single();
+
+    if (docError || !doc) {
+      return NextResponse.json(
+        { error: "Forbidden: Document does not belong to user." },
+        { status: 403 },
+      );
+    }
   }
 
   // ── 4. Run synchronously or return 202 and continue in the background ────────
@@ -360,7 +377,7 @@ export async function POST(request: NextRequest) {
           generatedAnswer,
           retrievedChunks,
           documentId,
-          userId,
+          userId: safeUserId,
         });
       } catch (err) {
         console.error("[/api/evaluate] Background evaluation failed:", err);
@@ -380,7 +397,7 @@ export async function POST(request: NextRequest) {
       generatedAnswer,
       retrievedChunks,
       documentId,
-      userId,
+      userId: safeUserId,
     });
 
     return NextResponse.json(result);
@@ -392,4 +409,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

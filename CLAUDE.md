@@ -8,7 +8,7 @@
 - **CRITICAL — `/api/evaluate` auth:** Added `anonClient.auth.getUser()` gate; unauthenticated requests return 401.
 - **HIGH — No-op Langfuse trace:** `createNoOpTrace()` now exposes `id` and `end()` so `/api/chat` does not crash when tracing is disabled.
 - **HIGH — `traceId` UUID validation:** `/api/evaluate` rejects non-UUID `traceId` values with 400 before Langfuse fetch (SSRF guard).
-- **HIGH — Retrieval tuning:** Top-K lowered to **3**, similarity threshold raised to **0.5** in `/api/chat` and `/api/retrieve` (via updated `match_document_chunks` RPC) to address Context Precision ≈ 0.214 from noisy low-similarity chunks.
+- **HIGH — Retrieval tuning:** Top-K lowered to **3**, similarity threshold raised to **0.2** in `/api/chat` and `/api/retrieve` (via updated `match_document_chunks` RPC) to address Context Precision ≈ 0.214 from noisy low-similarity chunks.
 - **Docs:** Stale batch-size references (20 → 100) corrected in `experiments/run/route.ts` comment and `KIMI.md`.
 
 ### REMAINING — USER ACTION

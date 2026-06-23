@@ -70,6 +70,19 @@ export async function POST(request: NextRequest) {
         { success: false, error: "Missing required configuration parameters" },
         { status: 400 },
       );
+    } 
+
+        // Security Check: Verify document ownership before logging
+    if (document_id) {
+      const { data: doc, error: docError } = await anonClient
+        .from('documents')
+        .select('id')
+        .eq('id', document_id)
+        .eq('user_id', user.id)
+        .single();
+      if (docError || !doc) {
+        return NextResponse.json({ error: "Forbidden: Document does not belong to user." }, { status: 403 });
+      }
     }
 
     const serviceClient = createServiceClient();

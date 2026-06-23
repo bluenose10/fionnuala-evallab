@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
 // This page reads server-only secrets and calls the Langfuse API, so it must
@@ -104,12 +105,16 @@ async function getLangfuseStatus(): Promise<LangfuseStatus> {
   }
 }
 
-async function getEvaluationCount(): Promise<number> {
+async function getEvaluationCount(userId: string): Promise<number> {
   try {
+    // Use the service client but filter explicitly by user_id so we never
+    // expose another tenant's count. RLS on evaluation_logs is a second line
+    // of defence; the .eq() here is the primary guard.
     const serviceClient = createServiceClient();
     const { count, error } = await serviceClient
       .from("evaluation_logs")
-      .select("*", { count: "exact", head: true });
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId);
 
     if (error) {
       console.error("[Observability] evaluation_logs count failed:", error);
@@ -132,8 +137,14 @@ function buildTracesUrl(host: string, projectId?: string): string {
 }
 
 export default async function ObservabilityPage() {
-  const status = await getLangfuseStatus();
-  const evaluationCount = await getEvaluationCount();
+  // Resolve the authenticated user first so we can scope the evaluation count.
+  const anonClient = createClient();
+  const { data: { user } } = await anonClient.auth.getUser();
+
+  const [status, evaluationCount] = await Promise.all([
+    getLangfuseStatus(),
+    user ? getEvaluationCount(user.id) : Promise.resolve(0),
+  ]);
 
   const tracesUrl = buildTracesUrl(status.host, status.projectId);
 
