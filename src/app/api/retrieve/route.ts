@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
   const rpcParams: Record<string, unknown> = {
     query_embedding: queryEmbedding,
     match_count:     3,
-    match_threshold: 0.2,
+    match_threshold: 0.0,
     filter_user_id:  user.id,
   };
   if (documentId) {
