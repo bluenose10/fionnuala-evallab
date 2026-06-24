@@ -1,5 +1,4 @@
 "use client";
-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -7,17 +6,10 @@ import {
   FileText,
   FlaskConical,
   LayoutDashboard,
-<<<<<<< HEAD
   Trophy,
+  Rocket,
   type LucideIcon,
 } from "lucide-react";
-=======
-  Trophy, 
-  Rocket,
-  type LucideIcon
-} from "lucide-react"; 
->>>>>>> eaf677d (Phase 11: Deployment Bridge, Public API Keys, and Auto-Winner Logic)
-
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -32,16 +24,11 @@ const navItems: NavItem[] = [
   { title: "QA Lab", href: "/dashboard/lab", icon: FlaskConical },
   { title: "Experiments", href: "/dashboard/experiments", icon: Trophy },
   { title: "Observability", href: "/dashboard/observability", icon: Activity },
-<<<<<<< HEAD
-];
-=======
   { title: "Deploy", href: "/dashboard/deploy", icon: Rocket },
-]; 
->>>>>>> eaf677d (Phase 11: Deployment Bridge, Public API Keys, and Auto-Winner Logic)
+];
 
 export function Sidebar() {
   const pathname = usePathname();
-
   return (
     <nav className="flex flex-col gap-1 p-3">
       {navItems.map((item) => {
@@ -49,7 +36,6 @@ export function Sidebar() {
           item.href === "/dashboard"
             ? pathname === item.href
             : pathname.startsWith(item.href);
-
         return (
           <Link
             key={item.href}
