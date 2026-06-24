@@ -57,14 +57,27 @@ export async function POST(req: NextRequest) {
     });
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
-    // 4. Filtered Retrieval (Strictly using the winning chunk_size)
-    const { data: chunks } = await supabaseAdmin.rpc("match_document_chunks", {
+        // 4. Filtered Retrieval (Strictly using the winning chunk_size)
+    let { data: chunks } = await supabaseAdmin.rpc("match_document_chunks", {
       match_embedding: queryEmbedding,
       match_count: topK,
       match_threshold: threshold,
       filter_user_id: clientId,
-      filter_chunk_size: chunkSize, // Crucial: Only retrieve chunks from the winning config
+      filter_chunk_size: chunkSize,
     });
+
+    // FALLBACK: If no chunks found with the strict filter, try again without it
+    if (!chunks || chunks.length === 0) {
+      console.log("No chunks found with strict filter. Trying unfiltered...");
+      const { data: fallbackChunks } = await supabaseAdmin.rpc("match_document_chunks", {
+        match_embedding: queryEmbedding,
+        match_count: topK,
+        match_threshold: 0.3, // Lower threshold to ensure we find something
+        filter_user_id: clientId,
+        filter_chunk_size: null, // Null means no filter
+      });
+      chunks = fallbackChunks;
+    }
 
     if (!chunks || chunks.length === 0) {
       return NextResponse.json({ answer: "I don't have enough information to answer that." });
