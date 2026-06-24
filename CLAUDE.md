@@ -1,6 +1,47 @@
 # CLAUDE.md: Project Specification & Senior Execution Memory
 
----
+--- 
+
+## 0d. Session Handoff — 2026-06-24 (Phase 11: Deployment Bridge, Public API Keys & Public Chatbot)
+
+### COMPLETED THIS SESSION
+
+- **Phase 11 — Built & Deployed:**
+  - `src/app/api/public/chat/route.ts` — Public RAG chatbot endpoint authenticated via `client_api_keys` table lookup. Embeds question via `text-embedding-3-small`, retrieves chunks via `match_document_chunks` RPC, generates answer via `gpt-4o-mini`. Auto-winner config block removed (no experiment data yet — hardcoded defaults: topK=3, threshold=0.3).
+  - `src/app/dashboard/deploy/page.tsx` — Deploy dashboard page with Rocket icon added to sidebar nav.
+  - **Verified working end-to-end** — public chatbot correctly answered questions against ingested PDF documents.
+
+- **Netlify → Vercel Migration:** Migrated production deployment from Netlify to Vercel, resolving persistent build issues. Langfuse 401 errors resolved via Vercel CLI env var configuration.
+
+- **Merge conflict resolved:** Phase 11 rebase left unresolved conflict markers in `src/components/dashboard/sidebar.tsx` (duplicate `Trophy`/`Rocket` imports and duplicate `navItems` array). Resolved by merging both versions cleanly.
+
+- **`match_document_chunks` RPC cleanup:** Discovered 6 overloaded versions of the function in Supabase, one of which referenced `dc.metadata` — a column that does not exist on `document_chunks`. All 6 versions dropped and replaced with a single clean function matching the actual schema (columns: id, document_id, user_id, content, chunk_index, token_count, embedding, created_at). `filter_chunk_size` parameter accepted but ignored (no chunk_size column exists).
+
+- **package-lock.json regenerated:** Deleted and reinstalled to resolve Vercel parse error on deploy.
+
+- **Supabase Auth URL updated:** Production Vercel domain added to Supabase Authentication → URL Configuration (Site URL + Redirect URLs).
+
+### CURRENT TRUTH (authoritative as of 2026-06-24 EOD)
+
+- **`main` is at Phase 11.** `git log main --oneline` top entry: `fd398cc` Phase 11: Deployment Bridge, Public API Keys, and Auto-Winner Logic.
+- **Production deploy on Vercel — PASS.** Build clean, public chatbot endpoint live.
+- **`match_document_chunks` RPC** — single canonical version, no overloads, no metadata references.
+- **Public chat route** uses hardcoded defaults (topK=3, threshold=0.3, chunkSize ignored) until experiment data exists to drive auto-winner logic.
+- **Metrics remain exclusively Faithfulness, Relevance, Precision.**
+
+### REMAINING — NEXT SESSION
+
+- **Auto-winner logic:** Re-introduce winner config lookup once sufficient experiment runs exist (≥5 queries per config).
+- **Phase 10 presentation layer:** Architecture charts, case studies (still outstanding).
+- **Pricing verification:** Rates in `src/lib/pricing.ts` are `VERIFY`-tagged — confirm before showing to B2B clients.
+- **Phase 12 (Semantic Caching):** Deferred — vector-based FAQ matching to reduce OpenAI costs for high-traffic B2B clients.
+
+### ROADMAP UPDATE
+
+| Phase | Name | Status |
+|---|---|---|
+| 11 | Deployment Bridge, Public API Keys & Auto-Winner Logic | ✅ COMPLETE — Public chatbot endpoint live, API key auth via `client_api_keys`, Deploy dashboard page, sidebar nav updated. |
+| 12 | Semantic Caching | 📋 DEFERRED — Vector-based FAQ matching to reduce OpenAI costs for high-traffic B2B clients. |
 
 ## 0c. Session Handoff — 2026-06-23 (Phase 10.3 Security & Retrieval Hardening)
 

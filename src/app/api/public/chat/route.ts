@@ -42,14 +42,13 @@ export async function POST(req: NextRequest) {
     });
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
-    // 3. Retrieve relevant chunks
-    let { data: chunks, error: rpcError } = await supabaseAdmin.rpc("match_document_chunks", {
-      match_embedding: queryEmbedding,
-      match_count: 3,
-      match_threshold: 0.3,
-      filter_user_id: clientId,
-      filter_chunk_size: null,
-    });
+   let { data: chunks, error: rpcError } = await supabaseAdmin.rpc("match_document_chunks", {
+  query_embedding: queryEmbedding,
+  match_count: 3,
+  match_threshold: 0.3,
+  filter_user_id: clientId,
+  filter_chunk_size: null,
+});
 
     if (rpcError) console.error("[RPC ERROR]", rpcError);
     console.log("[DEBUG] Chunks found:", chunks?.length ?? 0);
