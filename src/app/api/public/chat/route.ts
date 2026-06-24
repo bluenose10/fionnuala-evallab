@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing question or apiKey" }, { status: 400 });
     }
 
-    // 1. Identity Verification (Resolve Client via API Key)
+    // 1. Verify API Key
     const { data: keyData, error: keyError } = await supabaseAdmin
       .from("client_api_keys")
       .select("user_id")
@@ -35,62 +35,30 @@ export async function POST(req: NextRequest) {
     const clientId = keyData.user_id;
     console.log("[DEBUG] Resolved clientId:", clientId);
 
-    // 2. Auto-Winner Configuration Lookup
-    const { data: winnerConfig } = await supabaseAdmin
-      .from("experiment_runs")
-      .select("chunk_size, metadata")
-      .eq("user_id", clientId)
-      .gte("metadata->>query_count", "5")
-      .order("(avg_faithfulness + avg_relevance + avg_precision) / 3 DESC", { ascending: false })
-      .limit(1)
-      .single();
-
-    const chunkSize = winnerConfig?.chunk_size ?? 512;
-    const topK = winnerConfig?.metadata?.top_k ?? 3;
-    const threshold = winnerConfig?.metadata?.threshold ?? 0.5;
-    console.log("[DEBUG] Config:", { chunkSize, topK, threshold });
-
-    // 3. Embed the User's Question
+    // 2. Embed the question
     const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: question,
     });
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
-    // 4. Filtered Retrieval
+    // 3. Retrieve relevant chunks
     let { data: chunks, error: rpcError } = await supabaseAdmin.rpc("match_document_chunks", {
       match_embedding: queryEmbedding,
-      match_count: topK,
-      match_threshold: threshold,
+      match_count: 3,
+      match_threshold: 0.3,
       filter_user_id: clientId,
-      filter_chunk_size: chunkSize,
+      filter_chunk_size: null,
     });
 
     if (rpcError) console.error("[RPC ERROR]", rpcError);
-    console.log("[DEBUG] Chunks from primary search:", chunks?.length ?? 0);
-
-    // FALLBACK: If no chunks found, try without strict filter
-    if (!chunks || chunks.length === 0) {
-      console.log("[DEBUG] Trying fallback search...");
-      const { data: fallbackChunks, error: fallbackError } = await supabaseAdmin.rpc("match_document_chunks", {
-        match_embedding: queryEmbedding,
-        match_count: topK,
-        match_threshold: 0.3,
-        filter_user_id: clientId,
-        filter_chunk_size: null,
-      });
-
-      if (fallbackError) console.error("[FALLBACK RPC ERROR]", fallbackError);
-      console.log("[DEBUG] Chunks from fallback search:", fallbackChunks?.length ?? 0);
-      chunks = fallbackChunks;
-    }
+    console.log("[DEBUG] Chunks found:", chunks?.length ?? 0);
 
     if (!chunks || chunks.length === 0) {
-      console.log("[DEBUG] No chunks found for clientId:", clientId);
       return NextResponse.json({ answer: "I don't have enough information to answer that." });
     }
 
-    // 5. Generate Answer
+    // 4. Generate answer
     const contextText = chunks.map((c: any) => c.content).join("\n\n");
     const prompt = `You are a helpful AI assistant. Answer the user's question strictly using the provided context. Do not make up information.\n\nContext: ${contextText}\n\nQuestion: ${question}`;
 
