@@ -41,11 +41,6 @@ const STATUS_VARIANT: Record
   Document["status"],
   "secondary" | "warning" | "success" | "destructive"
 > = {
-  uploaded:   "secondary",
-  processing: "warning",
-  indexed:    "success",
-  failed:     "destructive",
-};
 
 export default function DocumentManagerPage() {
   const supabase = createClient();
