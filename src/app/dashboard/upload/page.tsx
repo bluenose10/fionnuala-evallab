@@ -37,7 +37,7 @@ type Document = {
 
 type UploadState = "idle" | "uploading" | "error";
 
-const STATUS_VARIANT: Record
+const STATUS_VARIANT: Record<
   Document["status"],
   "secondary" | "warning" | "success" | "destructive"
 > = {
