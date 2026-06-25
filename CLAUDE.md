@@ -2,6 +2,63 @@
 
 --- 
 
+
+## 0e. Session Handoff — 2026-06-25 (HNSW Verification, Experiments, Auto-Winner, Architecture Diagram, Case Study, Document Search)
+
+### COMPLETED THIS SESSION
+
+- **HNSW index verified:** Ran `EXPLAIN SELECT * FROM match_document_chunks(...)` — confirmed Seq Scan at current row count (69 rows), which is correct and expected. Force-tested with `SET enable_seqscan = off` confirmed Index Scan works. Index will auto-engage at production scale. No action needed.
+
+- **Real experiments run against two documents:**
+  - `EvalLab_Executive_Report.pdf` — Medium chunks (512/50) won at 94% avg, 100% Faithfulness, $0.025/run
+  - `Executive Summary.pdf` — Small chunks (256/32) won at 96% avg, 100% Faithfulness, $0.022/run
+  - Key finding: different document types favour different chunk sizes — validates the auto-winner approach.
+
+- **Auto-winner logic re-introduced to `/api/public/chat/route.ts`:** Queries `experiment_runs` for best config with ≥3 queries, ordered by `avg_faithfulness`. Falls back to chunk_size=512 if no data. Returns `config` in response so callers can see which config was used.
+
+- **Pricing verified:** All rates in `src/lib/pricing.ts` confirmed accurate against current OpenAI pricing (June 2026): `text-embedding-3-small` $0.02/1M, `gpt-4o-mini` $0.15/$0.60, `gpt-4o` $2.50/$10.00. Note: GPT-4.1 family now exists (GPT-4.1 Mini is more expensive than gpt-4o-mini; GPT-4.1 is ~20% cheaper than gpt-4o for the judge). No migration recommended before demo.
+
+- **Architecture diagram created:** Full SVG pipeline diagram (6 layers: Ingest → Store → Retrieve → Evaluate → Experiment → Deploy). Saved as `evallab-architecture.svg`.
+
+- **Estate agent case study created:** Word doc (`EvalLab-CaseStudy-EstateAgent.docx`) with real experiment numbers (94-96% Faithfulness, costs under $0.03/run), framed around "we didn't know if our AI was accurate" pain point. Covers problem, solution, results table, workflow, and CTA.
+
+- **Business model discussion:** Concluded that EvalLab is currently single-tenant. Correct go-to-market for now is build-for-them (per-client deployment, project fee £1500-3000 + monthly retainer £150-300). Self-serve SaaS is a future phase once patterns are established across 2-3 clients.
+
+- **Document naming convention established:** Agreed clients should use structured filenames (e.g. `FORSALE_14-Maple-Court_LS1-2AB.pdf`) so documents are identifiable without a search feature.
+
+- **Document search added to `/src/app/dashboard/upload/page.tsx`:** Client-side filter on filename. Search box in card header, filters `filteredDocs` in real time. No backend changes. Also added `Search` icon from lucide-react and `Input` from shadcn/ui.
+  - Build issue encountered: stray `Sidebar` export accidentally pasted into upload page, causing Next.js type error (`"Sidebar" is not a valid Page export field`). Resolved by restoring correct file content.
+
+- **`match_document_chunks` RPC parameter name fixed:** QA Lab `/api/chat` route was using `query_embedding` but the RPC had been renamed to `match_embedding` during the Phase 11 cleanup. Dropped and recreated the function with `query_embedding` parameter name to match both routes. Both `/api/chat` and `/api/public/chat` now working.
+
+### CURRENT TRUTH (authoritative as of 2026-06-25)
+
+- **Production deploy on Vercel — PASS.** Build clean after upload page fix.
+- **Public chatbot** — auto-winner logic live, pulls best config from `experiment_runs` per client.
+- **QA Lab** — working, `match_document_chunks` RPC uses `query_embedding` parameter.
+- **HNSW index** — exists and verified, will engage automatically at scale.
+- **Pricing** — confirmed accurate, safe for B2B demo.
+- **Architecture diagram** — `evallab-architecture.svg` available for pitch decks.
+- **Case study** — `EvalLab-CaseStudy-EstateAgent.docx` ready for estate agent prospect.
+- **Document search** — live on Documents page.
+
+### REMAINING — NEXT SESSION
+
+- **Estate agent demo prep:** Agree on naming convention with client before they upload any documents.
+- **Business model decision:** Confirm per-client deployment model vs deferred SaaS before prospect meeting.
+- **Phase 10 presentation layer:** Architecture diagram done. Still outstanding: written case study narrative for portfolio/LinkedIn.
+- **Phase 12 (Semantic Caching):** Deferred — vector-based FAQ matching to reduce OpenAI costs for high-traffic B2B clients.
+- **Auto-winner re-test:** Run more experiments (5+ queries per config) to build a more statistically robust winner selection dataset.
+
+### ROADMAP UPDATE
+
+| Phase | Name | Status |
+|---|---|---|
+| 10 | Experimentation Engine & Portfolio Polish | ✅ COMPLETE — Architecture diagram done, case study done, pricing verified, HNSW verified. |
+| 11 | Deployment Bridge, Public API Keys & Auto-Winner Logic | ✅ COMPLETE — Public chatbot live, auto-winner re-introduced with real experiment data, document search added. |
+| 12 | Semantic Caching | 📋 DEFERRED — Vector-based FAQ matching to reduce OpenAI costs for high-traffic B2B clients. |
+
+
 ## 0d. Session Handoff — 2026-06-24 (Phase 11: Deployment Bridge, Public API Keys & Public Chatbot)
 
 ### COMPLETED THIS SESSION

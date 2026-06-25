@@ -28,12 +28,20 @@ To maintain production-grade integrity and prevent system regressions, you must 
 
 - **Observability Without Pollution:** All OpenTelemetry / Langfuse instrumentation must live in `instrumentation.ts` or dedicated `src/lib/langfuse.ts` helpers. Do not sprinkle tracing code inside `/api/process`, `/api/retrieve`, `/api/chat`, or `/api/evaluate` business logic.
 
+- **RPC Integrity:** The `match_document_chunks` Supabase RPC uses the parameter name `query_embedding` — do NOT rename it. Only one canonical version of this function must exist in Supabase at any time. Multiple overloaded versions cause silent resolution failures. If changes are needed, drop all versions and recreate the single canonical function.
+
+- **Public API Auth:** `/api/public/chat` authenticates via `client_api_keys` table lookup (`api_key` → `user_id`). Do not change the authentication mechanism or table name without explicit instruction.
+
+- **Auto-Winner Logic:** The public chat route resolves the best RAG config by querying `experiment_runs` ordered by `avg_faithfulness` descending, filtered to runs with ≥3 queries. Falls back to `chunk_size=512` if no data exists. Do not modify this logic without explicit instruction.
+
+- **document_chunks Schema:** The actual columns are: `id`, `document_id`, `user_id`, `content`, `chunk_index`, `token_count`, `embedding`, `created_at`. There is NO `metadata` column on this table. Do not reference `dc.metadata` in any RPC or query.
+
 ---
 
 ## ⚠️ Instruction to Kimi
 
 Acknowledge this operational spec.
 
-**Do NOT** attempt to redo or "refactor" logic from Phases 1–9 (such as database schemas, matching functions, the Langfuse client, the `/api/chat` → `/api/evaluate` trace bridge, or `instrumentation.ts`) unless explicitly instructed.
+**Do NOT** attempt to redo or "refactor" logic from Phases 1–11 (such as database schemas, matching functions, the Langfuse client, the `/api/chat` → `/api/evaluate` trace bridge, `instrumentation.ts`, the public chat route, or the auto-winner config logic) unless explicitly instructed.
 
 > **Technical status, phase progress, environment credentials, and active task assignments are maintained in [CLAUDE.md](CLAUDE.md).** Refer to that file for the current phase state and any session handoff notes before starting work.
