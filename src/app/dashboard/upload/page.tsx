@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Cpu, FileText, Loader2, Search, Trash2, UploadCloud } from "lucide-react";
+import { CheckCircle2, Cpu, FileText, Loader2, Search, Trash2, UploadCloud, XCircle } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,12 @@ type Document = {
 
 type UploadState = "idle" | "uploading" | "error";
 
+type QueueItem = {
+  file: File;
+  status: "pending" | "uploading" | "processing" | "done" | "error";
+  error?: string;
+};
+
 const STATUS_VARIANT: Record<
   Document["status"],
   "secondary" | "warning" | "success" | "destructive"
@@ -58,12 +64,18 @@ export default function DocumentManagerPage() {
   const [deletingId, setDeletingId]     = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [search, setSearch]             = useState("");
+  const [queue, setQueue]               = useState<QueueItem[]>([]);
+  const [queueActive, setQueueActive]   = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredDocs = docs.filter((d) =>
     d.name.toLowerCase().includes(search.toLowerCase()),
   );
+
+  const queueDone  = queue.filter((q) => q.status === "done").length;
+  const queueTotal = queue.length;
+  const queueHasErrors = queue.some((q) => q.status === "error");
 
   async function fetchDocs() {
     setLoadingDocs(true);
@@ -82,23 +94,11 @@ export default function DocumentManagerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
+  function updateQueueItem(index: number, patch: Partial<QueueItem>) {
+    setQueue((prev) => prev.map((item, i) => i === index ? { ...item, ...patch } : item));
+  }
 
-    const file = files[0];
-
-    if (file.type !== "application/pdf") {
-      setUploadError("Only PDF files are accepted.");
-      return;
-    }
-    if (file.size > 50 * 1024 * 1024) {
-      setUploadError("File exceeds the 50 MB limit.");
-      return;
-    }
-
-    setUploadState("uploading");
-    setUploadError(null);
-
+  async function processQueue(files: File[]) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -109,37 +109,95 @@ export default function DocumentManagerPage() {
       return;
     }
 
-    const storagePath = `${user.id}/${Date.now()}_${file.name}`;
+    const initialQueue: QueueItem[] = files.map((file) => ({
+      file,
+      status: "pending",
+    }));
+    setQueue(initialQueue);
+    setQueueActive(true);
+    setUploadState("uploading");
 
-    const { error: storageError } = await supabase.storage
-      .from("documents")
-      .upload(storagePath, file, { contentType: file.type });
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
 
-    if (storageError) {
-      setUploadError(storageError.message);
-      setUploadState("error");
-      return;
-    }
+      // Step 1: Upload to storage
+      updateQueueItem(i, { status: "uploading" });
+      const storagePath = `${user.id}/${Date.now()}_${file.name}`;
 
-    const { error: dbError } = await supabase.from("documents").insert({
-      user_id:      user.id,
-      name:         file.name,
-      storage_path: storagePath,
-      size_bytes:   file.size,
-      mime_type:    file.type,
-      status:       "uploaded",
-    });
+      const { error: storageError } = await supabase.storage
+        .from("documents")
+        .upload(storagePath, file, { contentType: file.type });
 
-    if (dbError) {
-      await supabase.storage.from("documents").remove([storagePath]);
-      setUploadError(dbError.message);
-      setUploadState("error");
-      return;
+      if (storageError) {
+        updateQueueItem(i, { status: "error", error: storageError.message });
+        continue;
+      }
+
+      // Step 2: Insert DB record
+      const { data: inserted, error: dbError } = await supabase
+        .from("documents")
+        .insert({
+          user_id:      user.id,
+          name:         file.name,
+          storage_path: storagePath,
+          size_bytes:   file.size,
+          mime_type:    file.type,
+          status:       "uploaded",
+        })
+        .select("id")
+        .single();
+
+      if (dbError || !inserted) {
+        await supabase.storage.from("documents").remove([storagePath]);
+        updateQueueItem(i, { status: "error", error: dbError?.message ?? "DB insert failed" });
+        continue;
+      }
+
+      // Step 3: Auto-process (chunk + vectorise)
+      updateQueueItem(i, { status: "processing" });
+
+      try {
+        const res = await fetch("/api/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ documentId: inserted.id }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          updateQueueItem(i, { status: "error", error: body.error ?? "Processing failed" });
+        } else {
+          updateQueueItem(i, { status: "done" });
+        }
+      } catch {
+        updateQueueItem(i, { status: "error", error: "Network error during processing" });
+      }
     }
 
     setUploadState("idle");
+    setQueueActive(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    fetchDocs();
+    await fetchDocs();
+  }
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+
+    setUploadError(null);
+    const validFiles: File[] = [];
+
+    for (const file of Array.from(files)) {
+      if (file.type !== "application/pdf") {
+        setUploadError("Only PDF files are accepted.");
+        return;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        setUploadError(`"${file.name}" exceeds the 50 MB limit.`);
+        return;
+      }
+      validFiles.push(file);
+    }
+
+    await processQueue(validFiles);
   }
 
   async function handleDelete(doc: Document) {
@@ -192,6 +250,22 @@ export default function DocumentManagerPage() {
     }
   }
 
+  function getQueueIcon(status: QueueItem["status"]) {
+    if (status === "done")       return <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />;
+    if (status === "error")      return <XCircle className="h-4 w-4 text-destructive shrink-0" />;
+    if (status === "uploading" || status === "processing")
+                                 return <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />;
+    return <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 shrink-0" />;
+  }
+
+  function getQueueLabel(item: QueueItem) {
+    if (item.status === "uploading")  return "Uploading…";
+    if (item.status === "processing") return "Chunking & vectorising…";
+    if (item.status === "done")       return "Ready";
+    if (item.status === "error")      return item.error ?? "Failed";
+    return "Pending";
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -206,31 +280,25 @@ export default function DocumentManagerPage() {
       <Card>
         <CardHeader>
           <CardTitle>Upload documents</CardTitle>
-          <CardDescription>PDF files up to 50 MB each.</CardDescription>
+          <CardDescription>
+            Select up to 15 PDFs at once (max 50 MB each). Files are uploaded and chunked automatically one by one.
+          </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              handleFiles(e.dataTransfer.files);
-            }}
+            onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
             className={cn(
               "flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-12 text-center transition-colors",
-              dragging
-                ? "border-primary bg-primary/5"
-                : "border-muted-foreground/25",
+              dragging ? "border-primary bg-primary/5" : "border-muted-foreground/25",
             )}
           >
             <input
               ref={fileInputRef}
               type="file"
               accept="application/pdf"
+              multiple
               className="hidden"
               onChange={(e) => handleFiles(e.target.files)}
             />
@@ -245,20 +313,17 @@ export default function DocumentManagerPage() {
 
             <div>
               <p className="font-medium">Drag &amp; drop your PDFs here</p>
-              <p className="text-sm text-muted-foreground">or click to browse</p>
+              <p className="text-sm text-muted-foreground">or click to browse — multiple files supported</p>
             </div>
 
             <Button
               variant="outline"
               size="sm"
-              disabled={uploadState === "uploading"}
+              disabled={queueActive}
               onClick={() => fileInputRef.current?.click()}
             >
-              {uploadState === "uploading" ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Uploading…
-                </>
+              {queueActive ? (
+                <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</>
               ) : (
                 "Select files"
               )}
@@ -267,9 +332,55 @@ export default function DocumentManagerPage() {
             {uploadError ? (
               <p className="text-xs text-destructive">{uploadError}</p>
             ) : (
-              <p className="text-xs text-muted-foreground">PDF files up to 50 MB</p>
+              <p className="text-xs text-muted-foreground">PDF · up to 50 MB · max 15 files per batch</p>
             )}
           </div>
+
+          {/* Queue progress */}
+          {queue.length > 0 && (
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">
+                  {queueActive
+                    ? `Processing ${queueDone + 1} of ${queueTotal}…`
+                    : queueHasErrors
+                    ? `Completed with errors — ${queueDone} of ${queueTotal} succeeded`
+                    : `All ${queueTotal} file${queueTotal > 1 ? "s" : ""} processed`}
+                </p>
+                {!queueActive && (
+                  <Button variant="ghost" size="sm" onClick={() => setQueue([])}>
+                    Clear
+                  </Button>
+                )}
+              </div>
+
+              {/* Progress bar */}
+              <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-300"
+                  style={{ width: `${queueTotal > 0 ? (queueDone / queueTotal) * 100 : 0}%` }}
+                />
+              </div>
+
+              {/* Per-file list */}
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {queue.map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    {getQueueIcon(item.status)}
+                    <span className="truncate flex-1 text-muted-foreground">{item.file.name}</span>
+                    <span className={cn(
+                      "text-xs shrink-0",
+                      item.status === "done"  ? "text-green-500" :
+                      item.status === "error" ? "text-destructive" :
+                      "text-muted-foreground"
+                    )}>
+                      {getQueueLabel(item)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -279,9 +390,7 @@ export default function DocumentManagerPage() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <CardTitle>Indexed documents</CardTitle>
-              <CardDescription>
-                Metadata for every uploaded source file.
-              </CardDescription>
+              <CardDescription>Metadata for every uploaded source file.</CardDescription>
             </div>
             <div className="relative w-64">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -316,10 +425,7 @@ export default function DocumentManagerPage() {
                 </TableRow>
               ) : filteredDocs.length === 0 ? (
                 <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="py-10 text-center text-sm text-muted-foreground"
-                  >
+                  <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
                     {search ? `No documents matching "${search}".` : "No documents uploaded yet."}
                   </TableCell>
                 </TableRow>
@@ -331,9 +437,7 @@ export default function DocumentManagerPage() {
                       <span className="truncate max-w-[240px]">{doc.name}</span>
                     </TableCell>
                     <TableCell>{formatBytes(doc.size_bytes)}</TableCell>
-                    <TableCell>
-                      {doc.chunk_count > 0 ? doc.chunk_count : "—"}
-                    </TableCell>
+                    <TableCell>{doc.chunk_count > 0 ? doc.chunk_count : "—"}</TableCell>
                     <TableCell>
                       <Badge variant={STATUS_VARIANT[doc.status]}>
                         {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
