@@ -46,3 +46,6 @@ export async function updateSession(request: NextRequest) {
     url.searchParams.set("redirectedFrom", request.nextUrl.pathname);
     return NextResponse.redirect(url);
   }
+
+  return supabaseResponse;
+}
