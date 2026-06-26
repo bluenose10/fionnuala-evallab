@@ -468,10 +468,6 @@ function LoginForm() {
                 </div>
               </div>
 
-              <div className="el-forgot">
-                <a href="/forgot-password">Forgot password?</a>
-              </div>
-
               {error && <div className="el-error" role="alert">{error}</div>}
 
               <button type="submit" className="el-btn" disabled={loading}>
@@ -482,10 +478,7 @@ function LoginForm() {
                 )}
               </button>
 
-              <p className="el-register">
-                No account? <a href="/signup">Create one</a>
-              </p>
-            </form>
+              </form>
           </div>
 
           {/* RIGHT — Value prop */}
