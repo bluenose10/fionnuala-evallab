@@ -7,7 +7,8 @@ import {
   FileSearch,
   AlertCircle,
   Loader2,
-  Scale,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -44,10 +45,6 @@ interface LabInterfaceProps {
   userId: string;
 }
 
-/**
- * Highlight inline bracketed citations such as [1], [2], [3] in the grounded
- * synthesis so they stand out visually.
- */
 function renderCitedAnswer(text: string) {
   const parts = text.split(/(\[\d+\])/g);
   return parts.map((part, index) => {
@@ -63,6 +60,51 @@ function renderCitedAnswer(text: string) {
     }
     return <span key={index}>{part}</span>;
   });
+}
+
+function CollapsibleChunk({ chunk, index }: { chunk: SourceChunk; index: number }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <Card className="w-full">
+      <CardContent className="pt-6">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="space-y-0.5">
+            <p className="text-xs font-semibold text-muted-foreground">
+              Chunk {index + 1}
+            </p>
+            <p className="truncate text-xs font-mono text-muted-foreground">
+              doc: {chunk.document_id}
+            </p>
+          </div>
+          <Badge variant={chunk.similarity >= 0.8 ? "success" : "outline"}>
+            sim: {chunk.similarity.toFixed(4)}
+          </Badge>
+        </div>
+
+        <div
+          className={
+            expanded
+              ? "text-sm leading-relaxed text-foreground whitespace-pre-wrap"
+              : "text-sm leading-relaxed text-foreground whitespace-pre-wrap line-clamp-3"
+          }
+        >
+          {chunk.content}
+        </div>
+
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="mt-2 flex items-center gap-1 text-xs text-primary hover:underline"
+        >
+          {expanded ? (
+            <><ChevronUp className="h-3 w-3" /> Show less</>
+          ) : (
+            <><ChevronDown className="h-3 w-3" /> Show more</>
+          )}
+        </button>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function LabInterface({ userId }: LabInterfaceProps) {
@@ -83,7 +125,6 @@ export function LabInterface({ userId }: LabInterfaceProps) {
 
     let chatData: ChatResponse;
 
-    // ── 1. Execute grounded synthesis ────────────────────────────────────────
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -105,17 +146,8 @@ export function LabInterface({ userId }: LabInterfaceProps) {
       return;
     }
 
-      // ── 2. Queue LLM-as-a-Judge evaluation asynchronously ────────────────────
-    //    The evaluation must not block the chat response. We send the full
-    //    evaluation payload (query/answer/chunks/userId/documentId) that we
-    //    already have in hand from /api/chat, plus the traceId for Langfuse
-    //    score attachment. This avoids a round-trip to Langfuse to re-fetch
-    //    values we just produced — which previously raced ahead of Langfuse
-    //    Cloud's async ingest and returned a 404 (causing the 500 here).
     const firstDocId = chatData.sources[0]?.document_id;
 
-    // If no chunks were retrieved, there is nothing meaningful to evaluate —
-    // skip the judge call rather than surface a confusing 400 to the user.
     if (chatData.sources.length === 0) {
       setChatLoading(false);
       return;
@@ -143,17 +175,8 @@ export function LabInterface({ userId }: LabInterfaceProps) {
         }
         return res.json();
       })
-      .then(() => {
-        // Scores are persisted in the background. The Evaluation Hub will
-        // display them by reading evaluation_logs.
-      })
       .catch((err) => {
         console.error("[Lab] Background evaluation failed:", err);
-        setError(
-          `Answer generated, but background evaluation failed: ${
-            err instanceof Error ? err.message : "Unknown error"
-          }`,
-        );
       })
       .finally(() => {
         setEvalLoading(false);
@@ -246,8 +269,6 @@ export function LabInterface({ userId }: LabInterfaceProps) {
               <Skeleton className="h-20 w-full" />
               <Skeleton className="h-20 w-full" />
               <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-20 w-full" />
             </CardContent>
           </Card>
         </div>
@@ -280,7 +301,7 @@ export function LabInterface({ userId }: LabInterfaceProps) {
           </Card>
 
           {/* Evidence Evaluation Space */}
-          <div className="flex flex-col gap-6 w-full">
+          <div className="flex flex-col gap-4 w-full">
             <div>
               <div className="flex items-center gap-2">
                 <FileSearch className="h-5 w-5 text-primary" />
@@ -298,30 +319,7 @@ export function LabInterface({ userId }: LabInterfaceProps) {
             </div>
 
             {response.sources.map((chunk, index) => (
-              <Card key={chunk.id} className="w-full">
-                <CardContent className="pt-6">
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <div className="space-y-0.5">
-                      <p className="text-xs font-semibold text-muted-foreground">
-                        Chunk {index + 1}
-                      </p>
-                      <p className="truncate text-xs font-mono text-muted-foreground">
-                        doc: {chunk.document_id}
-                      </p>
-                    </div>
-                    <Badge
-                      variant={
-                        chunk.similarity >= 0.8 ? "success" : "outline"
-                      }
-                    >
-                      sim: {chunk.similarity.toFixed(4)}
-                    </Badge>
-                  </div>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                    {chunk.content}
-                  </p>
-                </CardContent>
-              </Card>
+              <CollapsibleChunk key={chunk.id} chunk={chunk} index={index} />
             ))}
 
             {response.sources.length === 0 && (
@@ -330,41 +328,6 @@ export function LabInterface({ userId }: LabInterfaceProps) {
               </div>
             )}
           </div>
-
-          {/* Evaluation results panel */}
-          <Card className="w-full">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Scale className="h-5 w-5 text-primary" />
-                <CardTitle>Automated Evaluation (Ragas)</CardTitle>
-              </div>
-              <CardDescription>
-                LLM-as-a-Judge scores computed against the retrieved evidence.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {evalLoading ? (
-                <div className="space-y-3">
-                  <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Queuing LLM-as-a-Judge evaluation...
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Scores are computed in the background and written to the
-                    Evaluation Hub.
-                  </p>
-                </div>
-              ) : (
-                <div className="flex h-24 flex-col items-center justify-center gap-1 rounded-md border border-dashed text-sm text-muted-foreground">
-                  <p>Evaluation queued for background processing.</p>
-                  <p className="text-xs">
-                    Results will appear in the Evaluation Hub once the judge
-                    completes.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
       )}
     </div>
