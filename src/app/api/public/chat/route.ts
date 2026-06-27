@@ -13,6 +13,8 @@ const supabaseAdmin = createClient(
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+const CACHE_SIMILARITY_THRESHOLD = 0.95;
+
 export async function POST(req: NextRequest) {
   try {
     const { question, apiKey } = await req.json();
@@ -35,7 +37,6 @@ export async function POST(req: NextRequest) {
     const clientId = keyData.user_id;
 
     // 2. Auto-Winner Configuration Lookup
-    // Find the best performing config with at least 3 queries run
     const { data: winnerConfig } = await supabaseAdmin
       .from("experiment_runs")
       .select("chunk_size, avg_faithfulness, avg_relevance, avg_precision")
@@ -45,12 +46,9 @@ export async function POST(req: NextRequest) {
       .limit(1)
       .single();
 
-    // Fallback to proven defaults if no experiment data exists
     const chunkSize = winnerConfig?.chunk_size ?? 512;
     const topK = 3;
     const threshold = 0.3;
-
-    console.log("[DEBUG] Winner config:", winnerConfig ? `chunk_size=${chunkSize}` : "using defaults");
 
     // 3. Embed the question
     const embeddingResponse = await openai.embeddings.create({
@@ -59,7 +57,26 @@ export async function POST(req: NextRequest) {
     });
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
-    // 4. Retrieve relevant chunks
+    // 4. Semantic cache lookup — check if a near-identical question was already answered
+    const { data: cacheHit } = await supabaseAdmin.rpc("match_semantic_cache", {
+      query_embedding: queryEmbedding,
+      match_threshold: CACHE_SIMILARITY_THRESHOLD,
+      match_user_id: clientId,
+    });
+
+    if (cacheHit && cacheHit.length > 0) {
+      console.log("[CACHE HIT] Returning cached answer, similarity:", cacheHit[0].similarity);
+      return NextResponse.json({
+        answer: cacheHit[0].answer,
+        sources: cacheHit[0].sources,
+        config: { chunkSize, topK, threshold },
+        cached: true,
+      });
+    }
+
+    console.log("[CACHE MISS] Running full RAG pipeline");
+
+    // 5. Retrieve relevant chunks
     let { data: chunks, error: rpcError } = await supabaseAdmin.rpc("match_document_chunks", {
       query_embedding: queryEmbedding,
       match_count: topK,
@@ -71,11 +88,12 @@ export async function POST(req: NextRequest) {
     if (rpcError) console.error("[RPC ERROR]", rpcError);
     console.log("[DEBUG] Chunks found:", chunks?.length ?? 0);
 
+    // No chunks found — do NOT cache this response
     if (!chunks || chunks.length === 0) {
       return NextResponse.json({ answer: "I don't have enough information to answer that." });
     }
 
-    // 5. Generate answer
+    // 6. Generate answer
     const contextText = chunks.map((c: any) => c.content).join("\n\n");
     const prompt = `You are a helpful AI assistant. Answer the user's question strictly using the provided context. Do not make up information.\n\nContext: ${contextText}\n\nQuestion: ${question}`;
 
@@ -86,7 +104,27 @@ export async function POST(req: NextRequest) {
 
     const answer = completion.choices[0].message.content;
 
-    return NextResponse.json({ answer, sources: chunks, config: { chunkSize, topK, threshold } });
+    // 7. Store in semantic cache
+const { error: cacheError } = await supabaseAdmin
+  .from("semantic_cache")
+  .insert({
+    user_id: clientId,
+    question_text: question,
+    question_embedding: queryEmbedding,
+    answer,
+    sources: chunks,
+    chunk_size: chunkSize,
+  });
+
+if (cacheError) console.error("[CACHE WRITE ERROR]", cacheError);
+else console.log("[CACHE WRITE] Stored successfully");
+
+    return NextResponse.json({
+      answer,
+      sources: chunks,
+      config: { chunkSize, topK, threshold },
+      cached: false,
+    });
 
   } catch (error: any) {
     console.error("[PUBLIC CHAT ERROR]", error);
