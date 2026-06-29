@@ -3,6 +3,282 @@
 --- 
 
 
+## 0i. Session Handoff — 2026-06-27 afternoon (Client Provisioning, Schema Consolidation, DB Cleanup)
+
+### COMPLETED THIS SESSION
+
+- **`supabase/schema.sql` fully updated — now covers all 12 phases in one canonical file:**
+  - Phase 1: `documents` table + RLS
+  - Phase 2: Storage bucket + RLS policies
+  - Phases 3&4: `document_chunks` + HNSW index (m=16, ef_construction=64) + RLS
+  - Phase 5: `match_document_chunks` RPC — updated with `filter_chunk_size` parameter (was missing from original)
+  - Phase 7: `evaluation_logs` + RLS
+  - Phase 8: `experiment_runs` + RLS
+  - Phase 11: `client_api_keys` + RLS (was missing entirely from old schema.sql)
+  - Phase 12: `semantic_cache` + HNSW index + `match_semantic_cache` RPC
+  - Safe to re-run: uses `IF NOT EXISTS` and `DROP/RECREATE` for all policies
+
+- **`setup-client.ps1` provisioning script created (project root):**
+  - Runs interactively — asks for client name, slug, domain, Vercel URL, Supabase keys, OpenAI key, Langfuse keys
+  - Find-and-replaces all EvalLab branding across every `.tsx`, `.ts`, `.css`, `.json`, `.md`, `.html`, `.js`, `.mjs` file (skips `node_modules`, `.next`, `.git`)
+  - Generates fresh `.env.local` with all client credentials pre-filled
+  - Prints 5-step manual checklist (Supabase auth URLs, schema.sql, create user, Vercel env vars, deploy)
+  - Run on a **fresh clone** of the repo — not on the live deployment
+
+- **`CLIENT_ONBOARDING.md` checklist created (project root):**
+  - Complete 8-step onboarding guide with checkboxes
+  - Pre-flight credential gathering table
+  - Smoke test table
+  - Client handover checklist including document naming convention
+  - Monthly maintenance tasks
+  - Troubleshooting quick reference
+
+- **`experiments` table dropped from Supabase:**
+  - Was an empty stale table, not related to `experiment_runs` which holds all real data
+  - `DROP TABLE IF EXISTS public.experiments;`
+
+- **Database truncated clean:**
+  - `TRUNCATE TABLE public.evaluation_logs, public.experiment_runs, public.semantic_cache CASCADE;`
+  - All test data cleared. Only `client_api_keys` (API key) and Supabase Auth user remain.
+  - Ready for estate agent documents.
+
+- **Pricing strategy researched and confirmed:**
+  - Market benchmarks: £5k–£10k setup for bespoke RAG (Agenticise UK, Stratagem US data)
+  - Retainer market rate: $2k–$8k/month — current £150-300 was far below market
+  - Recommended tiers: £5k (internal only), £7.5k (+ website chatbot), £10k (full custom/CRM)
+  - Retainer: £350-500/month to start, raise on client 2+
+  - 50% non-refundable deposit before any work begins
+  - Kill shot objections: hallucination liability (34% for legal AI per Stanford) + data privacy vs ChatGPT Enterprise
+
+- **Client deployment model confirmed:**
+  - Each client gets fresh clone + their own Supabase project + their own Vercel deployment
+  - Data never shared between clients
+  - Per-client workflow: `git clone` → `setup-client.ps1` → `schema.sql` in their Supabase → create user → deploy to Vercel
+
+### CURRENT TRUTH (authoritative as of 2026-06-27 EOD)
+
+- **Production deploy on Vercel — PASS. Database is clean and empty.**
+- **All 12 phases complete and documented.**
+- **`supabase/schema.sql`** — canonical, covers all phases, safe to run on fresh project.
+- **`setup-client.ps1`** — interactive provisioning script, project root.
+- **`CLIENT_ONBOARDING.md`** — complete onboarding checklist, project root.
+- **Semantic cache** — live, HNSW indexed, 7-day TTL, similarity: 1 confirmed on repeat queries.
+- **Database** — clean, ready for first real client documents.
+
+### REMAINING — NEXT SESSION
+
+- **Estate agent demo/onboarding:** Upload their documents, run experiments, establish auto-winner, test public chatbot with their content.
+- **QA Lab button colour** — Execute Synthesis button slightly darker than other buttons. Minor cosmetic, low priority.
+- **KIMI.md** — Add semantic cache guardrails and client provisioning notes.
+- **First client deposit** — 50% upfront before any provisioning work begins.
+
+### ROADMAP — ALL PHASES COMPLETE
+
+| Phase | Name | Status |
+|---|---|---|
+| 1 | Project Setup | ✅ COMPLETE |
+| 2 | File Management | ✅ COMPLETE |
+| 3 | Processing & Text Extraction | ✅ COMPLETE |
+| 4 | Embeddings | ✅ COMPLETE |
+| 5 | Retrieval Engine | ✅ COMPLETE |
+| 6 | AI Answers | ✅ COMPLETE |
+| 7 | Automated Evaluation (Ragas) | ✅ COMPLETE |
+| 8 | Experimentation Engine | ✅ COMPLETE |
+| 9 | Observability & Tracing | ✅ COMPLETE |
+| 10 | Portfolio Polish & Cost Mapping | ✅ COMPLETE |
+| 11 | Deployment Bridge, Public API, Homepage Redesign, Auth, Auto-Chunking, Dark Theme | ✅ COMPLETE |
+| 12 | Semantic Caching | ✅ COMPLETE |
+
+
+
+## 0h. Session Handoff — 2026-06-27 (Phase 12: Semantic Caching — COMPLETE)
+
+### COMPLETED THIS SESSION
+
+- **Phase 12: Semantic Caching built and deployed to production:**
+
+  **Supabase setup:**
+  - Created `public.semantic_cache` table: `id`, `user_id`, `question_text`, `question_embedding vector(1536)`, `answer`, `sources jsonb`, `chunk_size`, `created_at`, `expires_at` (default 7 days TTL).
+  - HNSW index on `question_embedding` (`vector_cosine_ops`, m=16, ef_construction=64).
+  - RLS enabled on table.
+  - Created `match_semantic_cache` RPC — queries by cosine similarity with threshold, filters by `user_id` and `expires_at > now()`, returns top 1 match.
+
+  **Route updated (`src/app/api/public/chat/route.ts`):**
+  - After embedding the question, checks `semantic_cache` via `match_semantic_cache` RPC at 0.95 cosine similarity threshold.
+  - Cache hit → returns instantly with `cached: true`, zero LLM calls.
+  - Cache miss → runs full RAG pipeline, stores result async (fire-and-forget, doesn't block response).
+  - Fallback "I don't have enough information" responses are never cached.
+  - Cache is scoped per `user_id` — clients never see each other's cached answers.
+  - Response includes `cached: true/false` so callers can see whether answer came from cache.
+
+  **Verified in production:**
+  - First question: `[CACHE MISS]` → RAG pipeline ran → stored in `semantic_cache`.
+  - Same question repeated: `[CACHE HIT] Returning cached answer, similarity: 1` — instant return, zero LLM cost.
+  - Confirmed in Vercel logs and Supabase table (2 rows visible with correct schema).
+
+  **Architecture decision confirmed (vs NotebookLM suggestion):**
+  - Do NOT evaluate before caching. gpt-4o judge costs ~$0.05/call vs $0.002 for answer — requiring per-answer evaluation before caching would make the feature financially useless.
+  - Safety comes from the auto-winner config (experiment-verified 94%+ Faithfulness) + 7-day TTL + no caching of fallback responses.
+  - "The lab validates the config, the cache stores the result."
+
+### CURRENT TRUTH (authoritative as of 2026-06-27)
+
+- **Production deploy on Vercel — PASS.**
+- **All 12 phases complete.**
+- **Semantic cache** — live, HNSW indexed, 7-day TTL, similarity threshold 0.95, per-client scoped.
+- **Public chatbot pipeline:** API key auth → auto-winner config → embed question → cache lookup → (hit: return instantly) / (miss: RAG + store).
+- **Homepage** — dark glassmorphism login.
+- **Dashboard** — full dark green theme, refined sidebar, card polish.
+- **Documents** — auto-chunking queue, search filter.
+- **QA Lab** — collapsible chunks, no dead Ragas placeholder.
+
+### REMAINING — NEXT SESSION
+
+- **Estate agent demo:** Book the meeting. Upload their documents. Test public chatbot end-to-end with their content. Run experiments to establish auto-winner for their document type.
+- **QA Lab button colour** — Execute Synthesis button appears darker than other buttons. Minor cosmetic, low priority.
+- **KIMI.md update** — Add semantic cache guardrails (don't modify cache threshold, TTL, or RPC without instruction).
+
+### ROADMAP UPDATE
+
+| Phase | Name | Status |
+|---|---|---|
+| 10 | Experimentation Engine, Portfolio Polish, Cost Mapping | ✅ COMPLETE |
+| 11 | Deployment Bridge, Public API, Auto-Winner, Homepage Redesign, Auth Simplification, Auto-Chunking, Dark Theme | ✅ COMPLETE |
+| 12 | Semantic Caching | ✅ COMPLETE — vector cache live in production, similarity: 1 confirmed on first repeat query |
+
+
+
+## 0g. Session Handoff — 2026-06-26 afternoon (Dark Theme, Sidebar Polish, Card Polish)
+
+### COMPLETED THIS SESSION
+
+- **Dark green theme applied across entire dashboard:**
+  - `src/app/globals.css` — replaced default Shadcn light theme with EvalLab dark green palette. Key tokens: `--background: 150 20% 4%`, `--primary: 142 70% 45%`, `--card: 150 18% 6%`. Dark is now the default `:root` — no `.dark` class switching needed at the component level.
+  - `src/app/layout.tsx` — added `className="dark"` to `<body>` and `suppressHydrationWarning` to `<html>`. Hydration error fixed by moving `className="dark"` from `<html>` to `<body>`.
+
+- **Dashboard layout refined (`src/app/dashboard/layout.tsx`):**
+  - Sidebar width reduced from w-64 to w-56 — tighter, more premium feel.
+  - Logo area: EvalLab icon now in a green-tinted rounded box. "Live" badge added top-right of logo bar.
+  - Bottom of sidebar: "Eval engine online" with pulsing green dot.
+  - Header height reduced from h-16 to h-14. Sign out button smaller and muted.
+  - Subtle green-tinted box shadows on sidebar right edge and header bottom border.
+  - Redirect on unauthenticated changed from `/login` to `/` (was missed in 0f).
+
+- **Sidebar refined (`src/components/dashboard/sidebar.tsx`):**
+  - Active item: replaced flat `bg-primary` green block with subtle `bg-primary/15` tinted card + `shadow-[inset_0_0_0_1px_rgba(34,197,94,0.25)]` border.
+  - Green glowing left bar indicator on active item (`shadow-[0_0_8px_rgba(34,197,94,0.8)]`).
+  - Icon colour changes to `text-primary` when active, `text-muted-foreground` when inactive.
+  - Hover state: `hover:bg-primary/8 hover:text-foreground` — subtle, not jarring.
+
+- **Card and global polish (`src/app/globals.css`):**
+  - Cards get green border glow on hover: `border-color: rgba(34,197,94,0.15)`.
+  - Input/textarea focus gets green ring: `box-shadow: 0 0 0 1px rgba(34,197,94,0.3)`.
+  - Custom green scrollbar throughout: `rgba(34,197,94,0.2)` thumb, transparent track.
+
+- **OpenAI cost discrepancy noted:**
+  - EvalLab dashboard shows $0.71 (cumulative experiment spend calculated from `pricing.ts` retail rates).
+  - OpenAI usage page shows $0.01 (actual billing for June — low volume + possible free credits).
+  - Not a bug. EvalLab cost tracking is a calculated estimate, not pulled from OpenAI billing API. Safe for demo.
+
+### CURRENT TRUTH (authoritative as of 2026-06-26 EOD)
+
+- **Production deploy on Vercel — PASS.**
+- **Homepage** — dark glassmorphism login, fully functional.
+- **Dashboard** — full dark green theme, refined sidebar with Live badge + Eval engine online status, card hover polish, green scrollbar.
+- **Auth flow** — unauthenticated → `/`. Sign out → `/`. No `/login` route.
+- **Documents** — auto-chunking queue, multiple file select, progress bar, search filter.
+- **QA Lab** — collapsible chunk text, no dead Ragas placeholder.
+- **Experiments** — radar chart renders beautifully in dark mode.
+- **Public chatbot** — auto-winner logic live.
+- **All documentation** — README, Playbook, Executive Report, Technical Reference, KIMI.md all updated to Phase 11.
+
+### REMAINING — NEXT SESSION
+
+- **Estate agent demo:** Book the meeting. Upload their documents using the naming convention. Test public chatbot end-to-end with their content.
+- **QA Lab button colour** — Execute Synthesis button appears darker green on that page vs other pages. Minor cosmetic issue, low priority.
+- **Phase 12 (Semantic Caching):** Deferred — vector-based FAQ matching to reduce OpenAI costs at scale.
+
+### ROADMAP UPDATE
+
+| Phase | Name | Status |
+|---|---|---|
+| 10 | Experimentation Engine, Portfolio Polish, Cost Mapping | ✅ COMPLETE |
+| 11 | Deployment Bridge, Public API, Auto-Winner, Homepage Redesign, Auth Simplification, Auto-Chunking, Dark Theme | ✅ COMPLETE |
+| 12 | Semantic Caching | 📋 DEFERRED |
+
+
+
+## 0f. Session Handoff — 2026-06-26 (Homepage Redesign, Auth Simplification, Auto-Chunking, Lab UX)
+
+### COMPLETED THIS SESSION
+
+- **Homepage redesigned — dark glassmorphism login screen:**
+  - `src/app/page.tsx` replaced entirely. Old marketing landing page removed.
+  - New design: dark `#080c0a` background, ambient green glows, glassmorphism card, split left/right layout.
+  - Left: EvalLab logo, login form with Supabase auth, password toggle, error handling, spinner.
+  - Right: "Not guessing. Measuring." headline, three feature cards, pulsing "Eval engine online" badge, 90%+ target callout.
+  - Uses `useSearchParams` + `Suspense` wrapper — handles `redirectedFrom` middleware redirects correctly.
+  - Fully functional — hits Supabase auth and redirects to `/dashboard` on success.
+
+- **Auth route simplification — single entry point:**
+  - `src/lib/supabase/middleware.ts` — changed redirect from `/login` to `/` so unauthenticated users land on homepage login.
+  - `src/app/auth/signout/route.ts` — changed redirect from `/login` to `/` so sign out returns to homepage.
+  - `src/app/(auth)/login/page.tsx` — deleted (homepage handles login).
+  - `src/app/(auth)/signup/page.tsx` — deleted (per-client deployment model; accounts created manually in Supabase Auth).
+  - `src/app/(auth)/layout.tsx` — deleted (no auth pages remain).
+  - "No account? Create one" and "Forgot password?" links removed from homepage — clients contact admin.
+
+- **Business model confirmed — per-client deployment:**
+  - Each client gets their own Vercel deployment, Supabase project, API key, and login.
+  - No multi-tenancy required. No self-serve signup. Accounts created manually.
+  - Project fee + monthly retainer model.
+
+- **Name decision — keep EvalLab:**
+  - Checked VerityLab (food company at veritylabs.co.uk), ProofLab (prooflab.com taken), others.
+  - Neither evallab.au nor eval-lab.com are competitors. EvalLab kept as-is.
+
+- **Auto-chunking queue added to Documents page (`src/app/dashboard/upload/page.tsx`):**
+  - File input now accepts `multiple` files.
+  - On upload, files are processed sequentially — upload → chunk → vectorise — one at a time automatically. No manual process button needed per file.
+  - Progress bar shows "Processing 2 of 5…" with per-file status (pending → uploading → chunking & vectorising → ready / error).
+  - Clear button dismisses queue display when done.
+  - Manual process button retained for any docs already uploaded but not yet chunked.
+  - Recommended batch size: 10-15 PDFs per upload. Max 50MB per file, ideally under 150 pages.
+
+- **QA Lab chunk display improved (`src/components/dashboard/lab-interface.tsx`):**
+  - Chunk text now collapses to 3 lines with "Show more / Show less" toggle per chunk.
+  - Automated Evaluation (Ragas) placeholder card removed — it was a dead UI element. Evaluation still fires in background; scores still appear in Evaluation Hub.
+
+- **Documentation updated:**
+  - `README.md`, `AI_Knowledge_Base_Playbook.md`, `EXECUTIVE_REPORT.md`, `Technical_Reference.md` — all updated to Phase 11 complete, correct schema, correct credentials.
+  - `KIMI.md` — updated to Phase 1–11 guardrails, added RPC integrity, public API auth, auto-winner logic, and document_chunks schema rules.
+
+### CURRENT TRUTH (authoritative as of 2026-06-26)
+
+- **Production deploy on Vercel — PASS.**
+- **Homepage** — dark glassmorphism login, fully functional auth, no signup/forgot password links.
+- **Auth flow** — unauthenticated → `/` (homepage login). Sign out → `/`. No `/login` route exists.
+- **Documents page** — auto-chunking queue, multiple file upload, progress indicator, search filter.
+- **QA Lab** — collapsible chunk text, no dead Ragas placeholder card.
+- **Public chatbot** — auto-winner logic live.
+- **All docs** — updated and accurate.
+
+### REMAINING — NEXT SESSION
+
+- **Estate agent demo prep:** Upload client documents, agree naming convention, test public chatbot end-to-end.
+- **Dashboard UI redesign:** Interior dashboard pages (Overview, QA Lab, Experiments, Observability, Deploy) still use default light Shadcn theme. Could match the dark green aesthetic of the login screen.
+- **Experiment cadence:** Run experiments after each major document batch change to keep auto-winner data fresh.
+- **Phase 12 (Semantic Caching):** Deferred — vector-based FAQ matching to reduce OpenAI costs at scale.
+
+### ROADMAP UPDATE
+
+| Phase | Name | Status |
+|---|---|---|
+| 11 | Deployment Bridge, Public API Keys, Auto-Winner, Homepage Redesign, Auth Simplification, Auto-Chunking | ✅ COMPLETE |
+| 12 | Semantic Caching | 📋 DEFERRED |
+
+
+
 ## 0e. Session Handoff — 2026-06-25 (HNSW Verification, Experiments, Auto-Winner, Architecture Diagram, Case Study, Document Search)
 
 ### COMPLETED THIS SESSION

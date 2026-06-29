@@ -3,19 +3,20 @@
 > Accuracy-First AI. A scientific laboratory for **Grounded RAG** — measure
 > Faithfulness, Relevance & Precision instead of guessing. **Not a chatbot.**
 
-This repo contains a production-grade Next.js + Supabase RAG evaluation platform. Phases 1–11 are implemented, including the unified ingestion engine, retrieval, grounded synthesis, Ragas evaluation, Langfuse manual tracing, OpenTelemetry auto-instrumentation, the Experimentation Engine with experiment-scoped cost mapping, and the Deployment Bridge with public API keys and a RAG-based public chatbot endpoint.
+This repo contains a production-grade Next.js + Supabase RAG evaluation platform. All 12 phases are implemented, including the unified ingestion engine, retrieval, grounded synthesis, Ragas evaluation, Langfuse tracing, OpenTelemetry auto-instrumentation, the Experimentation Engine with experiment-scoped cost mapping, the Deployment Bridge with public API keys, and Phase 12 Semantic Caching for zero-cost repeat query serving.
 
 ## Stack
 
 | Layer | Tech |
 | :--- | :--- |
 | Frontend | Next.js 14 (App Router), TypeScript, Tailwind |
-| UI | Shadcn UI (New York / Slate), Recharts |
+| UI | Shadcn UI (dark green theme), Recharts |
 | Auth/DB | Supabase (Postgres + pgvector), RLS |
 | RAG Engine | LlamaIndex Orchestration |
 | Models | Split Provider Strategy: gpt-4o-mini (Chat) + gpt-4o (Judge) + text-embedding-3-small (Embeddings) |
 | Evaluation | Ragas Framework — 3 Core Metrics (Faithfulness, Relevance, Context Precision) |
 | Tracing | Langfuse Observability (SDK + OpenTelemetry) |
+| Caching | Semantic cache via pgvector cosine similarity (HNSW indexed, 7-day TTL) |
 
 ---
 
@@ -33,9 +34,12 @@ cp .env.local.example .env.local
 Fill in your Supabase project URL + anon key, along with your `SUPABASE_SERVICE_ROLE_KEY` and `OPENAI_API_KEY`. Langfuse credentials (`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`) are required to enable observability; without them the app boots safely with tracing disabled.
 
 3. **Set up the database**
-   Open the Supabase SQL Editor and run [`supabase/schema.sql`](supabase/schema.sql). This enables `pgvector` and creates the RLS-protected tables, confirming the `embedding` column maps to a `USER-DEFINED` `vector` type.
+   Open the Supabase SQL Editor and run [`supabase/schema.sql`](supabase/schema.sql). This enables `pgvector` and creates all RLS-protected tables including `semantic_cache`.
 
-4. **Run the dev server**
+4. **Create the first user**
+   There is no self-serve signup. Create the client's account manually in Supabase Auth (Authentication → Users → Add user). The homepage login screen is the only entry point.
+
+5. **Run the dev server**
 ```bash
 npm run dev
 ```
@@ -45,18 +49,22 @@ Visit http://localhost:3000.
 
 ## What's in the platform
 
-* **Landing page** — "Accuracy-First AI / Eliminating Hallucinations".
-* **Auth** — `/login` + `/signup` wired to Supabase Auth, with email-confirmation flow and an `/auth/callback` route.
+* **Homepage** — Dark glassmorphism login screen. Authenticates via Supabase Auth and redirects to `/dashboard`. No marketing page, no signup, no forgot password — per-client deployment model.
 * **Protected dashboard** (`middleware.ts` guards `/dashboard`):
-  * **Overview** — metric cards.
-  * **Document Manager** — file-drop zone + metadata table with real-time filename search.
-  * **QA & Retrieval Lab** — side-by-side "The AI Answer" vs "Retrieved Chunks" with Ragas scoring.
-  * **Evaluation Hub** — Ragas radar chart + metric breakdown.
+  * **Overview** — metric cards: Documents Indexed, Avg Faithfulness, Experiments Run, Monthly Cost.
+  * **Document Manager** — multi-file drag & drop with auto-chunking queue. Files are uploaded, chunked, and vectorised sequentially with a progress indicator. Real-time filename search.
+  * **QA & Retrieval Lab** — ask questions against the knowledge base, inspect grounded answers and collapsible retrieved chunks.
   * **Experiment Leaderboard** — live A/B comparison of chunk configurations (256/32, 512/50, 1024/100) ranked by Ragas scores and cost. Auto-winner logic promotes the best-performing config to the live endpoint automatically.
   * **Observability** — Langfuse live tracing with parent-child spans, plus OpenTelemetry auto-instrumentation.
   * **Deploy** — Public API key management. Clients embed a single API key to connect their website or CRM to the RAG endpoint.
 
-* **Public RAG endpoint** — `/api/public/chat` authenticates via `client_api_keys`, retrieves the auto-winner config from experiment data, and returns grounded answers + source chunks. No Supabase Auth required on the client side.
+* **Public RAG endpoint** — `/api/public/chat` authenticates via `client_api_keys`, checks the semantic cache first (instant return at similarity ≥ 0.95), falls back to full RAG pipeline on cache miss. Auto-winner config ensures answers come from the experiment-verified best configuration. Cache entries expire after 7 days.
+
+---
+
+## Deployment model
+
+EvalLab is deployed as a **per-client installation** — each client gets their own Vercel project, Supabase project, API key, and login credentials. There is no shared multi-tenant SaaS infrastructure. Accounts are created manually by the administrator in Supabase Auth.
 
 ---
 
@@ -65,14 +73,14 @@ Visit http://localhost:3000.
 ```
 src/
   app/
-    (auth)/login, (auth)/signup   # auth pages
     auth/callback, auth/signout   # auth route handlers
-    api/public/chat               # public RAG chatbot endpoint (API key auth)
+    api/public/chat               # public RAG chatbot endpoint (API key auth + semantic cache)
     dashboard/                    # protected app shell + feature pages
-    layout.tsx, page.tsx          # root layout + landing page
+    layout.tsx                    # root layout (dark theme)
+    page.tsx                      # homepage login screen
   components/
     ui/                           # shadcn primitives
-    dashboard/                    # sidebar, ragas-radar, leaderboard
+    dashboard/                    # sidebar, ragas-radar, leaderboard, lab-interface
   lib/
     supabase/                     # browser + server + middleware clients
     evaluation/                   # Ragas judge + scoring
@@ -80,7 +88,7 @@ src/
     pricing.ts                    # centralised OpenAI token rate constants
   middleware.ts                   # protects /dashboard via Supabase Auth
 supabase/
-  schema.sql                      # pgvector + tables + RLS + RPCs
+  schema.sql                      # pgvector + tables + RLS + RPCs + semantic_cache
   migrations/                     # incremental migration scripts
 ```
 
