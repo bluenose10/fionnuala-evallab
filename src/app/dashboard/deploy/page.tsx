@@ -24,7 +24,7 @@ export default function DeployPage() {
         .from("client_api_keys")
         .select("api_key")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
       if (data) setApiKey(data.api_key);
       setLoading(false);
@@ -39,12 +39,11 @@ export default function DeployPage() {
 
     const newKey = `eval_live_${crypto.randomUUID()}`;
 
-    // Delete old key if it exists (1 key per client for now)
     await supabase.from("client_api_keys").delete().eq("user_id", user.id);
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("client_api_keys")
-      .insert({ user_id: user.id, api_key: newKey, label: "Production Website" })
+      .insert({ user_id: user.id, api_key: newKey, name: "Production Website" })
       .select()
       .single();
 
@@ -60,14 +59,16 @@ export default function DeployPage() {
     }
   };
 
-  const snippet = `<!-- EvalLab Truth Engine Widget -->
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://your-app.com";
+
+  const snippet = `<!-- AI Knowledge Base Widget -->
 <script>
   window.EvalLabConfig = {
-    apiKey: "${apiKey || 'YOUR_API_KEY'}",
-    apiEndpoint: "${typeof window !== 'undefined' ? window.location.origin : 'https://your-app.com'}/api/public/chat"
+    apiKey: "${apiKey || "YOUR_API_KEY"}",
+    apiEndpoint: "${origin}/api/public/chat"
   };
 </script>
-<script src="https://your-app.com/embed.js" async defer></script>`;
+<script src="${origin}/embed.js" async defer></script>`;
 
   if (loading) {
     return (
@@ -92,19 +93,23 @@ export default function DeployPage() {
           <KeyRound className="h-5 w-5 text-primary" />
           Production API Key
         </h2>
-        
+
         {apiKey ? (
           <div className="space-y-4">
             <div className="flex items-center gap-2 bg-secondary/50 border border-border rounded-lg p-3">
               <code className="text-sm text-foreground font-mono flex-1 truncate">{apiKey}</code>
-              <button 
+              <button
                 onClick={copyToClipboard}
                 className="p-2 hover:bg-secondary rounded-md transition-colors"
               >
-                {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4 text-muted-foreground" />}
+                {copied ? (
+                  <Check className="h-4 w-4 text-primary" />
+                ) : (
+                  <Copy className="h-4 w-4 text-muted-foreground" />
+                )}
               </button>
             </div>
-            <button 
+            <button
               onClick={generateKey}
               className="text-sm text-destructive hover:underline"
             >
