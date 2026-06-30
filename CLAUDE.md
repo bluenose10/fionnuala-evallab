@@ -3,6 +3,53 @@
 --- 
 
 
+## 0j. Session Handoff — 2026-06-30 (First Two Real Client Clones — smithco-evallab & smithco-evallab2)
+
+### COMPLETED THIS SESSION
+
+- **Two full end-to-end client provisioning runs completed, both ultimately successful, both surfaced real bugs in the canonical repo that are now fixed at the source:**
+
+  **Run 1 — smithco-evallab:**
+  - Cloned, branded, deployed. Hit a build failure: `setup-client.ps1` had encoding corruption (smart quotes/em-dashes saved as non-ASCII, broke PowerShell parsing) and used naive substring replacement, which corrupted `RetrievalLabPage` → mangled function name, and `window.EvalLabConfig` → broken JS, inside `lab/page.tsx` and `deploy/page.tsx`.
+  - Fixed `setup-client.ps1` to: (a) use plain ASCII only, no smart punctuation; (b) use word-boundary regex (`\bEvalLab\b`) instead of naive substring replace, so it can never match inside identifiers like `RetrievalLabPage`; (c) exclude `CLIENT_ONBOARDING.md` and itself from the branding scan entirely.
+  - Also hit: `deploy/page.tsx` using `.single()` (throws on zero rows → 406) and inserting a `label` field that doesn't exist in the `client_api_keys` schema (should be `name`) → 400 errors, API key never generates. Fixed to `.maybeSingle()` and `name`.
+  - Deployed, tested, public chatbot confirmed working end-to-end via Netlify test frontend.
+
+  **Run 2 — smithco-evallab2 (clean re-run to validate the fixes):**
+  - Deleted Run 1 entirely (GitHub repo, Vercel project, local folder) and started fresh from the canonical repo to prove the fixes actually hold.
+  - **New bug surfaced:** canonical repo's `.gitignore` file existed on disk but was saved as `gitignore` (no leading dot) — git never recognised it as an ignore file. Result: `.env.local` (containing the real OpenAI API key) got committed and pushed, triggering GitHub's secret-scanning push protection block. Root cause confirmed via `git ls-files | findstr gitignore` returning empty, then `Get-ChildItem -Force | findstr gitignore` showing the un-dotted filename.
+  - Fixed: `Rename-Item gitignore .gitignore`, recommitted, pushed clean to canonical repo. This was the single most important fix of the session — every future clone now correctly ignores `.env.local`.
+  - **Same `deploy/page.tsx` bug recurred** — because the Run 1 fix was applied to the smithco-evallab client clone but never pushed back to the canonical `ai-eval-platform` repo. Re-applied the fix and pushed to canonical this time, not just the client clone.
+  - Hit a Vercel quirk: when no "Import Git Repository" option appeared, used "Create Empty Project" instead, then connected the repo via Settings → Git afterward. This required explicitly setting Framework Preset to Next.js in Settings → Build & Development Settings, since an empty project sometimes defaults to a static-site config and fails with "No Output Directory named public found."
+  - Fully deployed, tested, public chatbot confirmed working end-to-end (uploaded 5 real PDFs, ran experiments, generated API key, connected to Netlify test frontend, got correct grounded answers).
+
+- **`CLIENT_ONBOARDING.md` rewritten with all lessons baked in:**
+  - New Step 0: verify canonical repo's `.gitignore` has the correct filename before cloning
+  - New Step 4: verify `.env.local` shows as untracked (not staged/missing) immediately after running the provisioning script — this single check would have caught the leak before it happened
+  - Step 7 (Vercel deploy) now documents both the normal import flow AND the "Create Empty Project" fallback path, including the Framework Preset fix
+  - New troubleshooting rows for: gitignore-missing symptom, Vercel "No Output Directory" error, and the recurring deploy/page.tsx bug
+  - New golden rule added at the bottom: any bug fix discovered on a client clone must be pushed back to the canonical repo, not left only in the client repo — this is exactly what caused the deploy/page.tsx bug to repeat
+
+- **`setup-client.ps1` — confirmed final fixed version is now live in the canonical repo** (word-boundary safe, ASCII-only, excludes onboarding doc and itself from branding scan).
+
+### CURRENT TRUTH (authoritative as of 2026-06-30)
+
+- **Canonical `ai-eval-platform` repo is now genuinely clone-safe:** `.gitignore` correctly named and tracked, `setup-client.ps1` word-boundary safe, `deploy/page.tsx` uses `.maybeSingle()` and `name` field.
+- **Two real client deployments proven working end-to-end** (smithco-evallab2 is the live one; smithco-evallab was deleted as part of the clean re-test).
+- **`CLIENT_ONBOARDING.md`** — now reflects real production lessons, not just theoretical steps.
+- **Golden rule established:** fixes found during client provisioning must always be pushed to the canonical repo immediately, before moving on, never left as a one-off patch on a client clone.
+
+### REMAINING — NEXT SESSION
+
+- **Rename "Faithfulness" to "Truth Score" in UI/pitch copy** — agreed direction from external AI conversations (GLM, NotebookLM), deferred until after a clean clone cycle was proven. Internal Ragas field name `faithfulness` stays unchanged — this is a display-label and pitch-language change only.
+- **Pricing decision still open** — two sets of researched benchmarks now in hand (Tier 1/2/3 at £5k/£7.5k/£10k+£350-500/mo retainer vs GLM's £4,995/£7,495/£12,500+ with £295/£495/£995+/mo). Lean toward the lower end for the first real paying client given no track record yet.
+- **Estate agent / first real paying client onboarding** — platform and process are now both proven. Ready to onboard for real.
+- **KIMI.md** — still needs semantic cache guardrails and client provisioning notes added (carried over from 0i, not yet done).
+
+### ROADMAP — ALL 12 PHASES COMPLETE, PROVISIONING PROCESS NOW VALIDATED TWICE
+
+
+
 ## 0i. Session Handoff — 2026-06-27 afternoon (Client Provisioning, Schema Consolidation, DB Cleanup)
 
 ### COMPLETED THIS SESSION
