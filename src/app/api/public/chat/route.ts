@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     });
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
-    // 4. Semantic cache lookup — check if a near-identical question was already answered
+    // 4. Semantic cache lookup
     const { data: cacheHit } = await supabaseAdmin.rpc("match_semantic_cache", {
       query_embedding: queryEmbedding,
       match_threshold: CACHE_SIMILARITY_THRESHOLD,
@@ -66,6 +66,18 @@ export async function POST(req: NextRequest) {
 
     if (cacheHit && cacheHit.length > 0) {
       console.log("[CACHE HIT] Returning cached answer, similarity:", cacheHit[0].similarity);
+
+      // Log cached interaction to audit trail (fire and forget)
+      supabaseAdmin.from("public_interaction_logs").insert({
+        user_id: clientId,
+        question,
+        answer: cacheHit[0].answer,
+        sources: cacheHit[0].sources,
+        cached: true,
+      }).then(({ error }) => {
+        if (error) console.error("[AUDIT LOG ERROR - cache hit]", error);
+      });
+
       return NextResponse.json({
         answer: cacheHit[0].answer,
         sources: cacheHit[0].sources,
@@ -88,7 +100,7 @@ export async function POST(req: NextRequest) {
     if (rpcError) console.error("[RPC ERROR]", rpcError);
     console.log("[DEBUG] Chunks found:", chunks?.length ?? 0);
 
-    // No chunks found — do NOT cache this response
+    // No chunks — do NOT log or cache
     if (!chunks || chunks.length === 0) {
       return NextResponse.json({ answer: "I don't have enough information to answer that." });
     }
@@ -105,19 +117,31 @@ export async function POST(req: NextRequest) {
     const answer = completion.choices[0].message.content;
 
     // 7. Store in semantic cache
-const { error: cacheError } = await supabaseAdmin
-  .from("semantic_cache")
-  .insert({
-    user_id: clientId,
-    question_text: question,
-    question_embedding: queryEmbedding,
-    answer,
-    sources: chunks,
-    chunk_size: chunkSize,
-  });
+    const { error: cacheError } = await supabaseAdmin
+      .from("semantic_cache")
+      .insert({
+        user_id: clientId,
+        question_text: question,
+        question_embedding: queryEmbedding,
+        answer,
+        sources: chunks,
+        chunk_size: chunkSize,
+      });
 
-if (cacheError) console.error("[CACHE WRITE ERROR]", cacheError);
-else console.log("[CACHE WRITE] Stored successfully");
+    if (cacheError) console.error("[CACHE WRITE ERROR]", cacheError);
+    else console.log("[CACHE WRITE] Stored successfully");
+
+    // 8. Log to permanent audit trail (fire and forget — no judge, just the transcript)
+    supabaseAdmin.from("public_interaction_logs").insert({
+      user_id: clientId,
+      question,
+      answer,
+      sources: chunks,
+      cached: false,
+    }).then(({ error }) => {
+      if (error) console.error("[AUDIT LOG ERROR]", error);
+      else console.log("[AUDIT LOG] Interaction logged");
+    });
 
     return NextResponse.json({
       answer,

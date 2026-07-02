@@ -254,3 +254,25 @@ AS $$
   ORDER BY sc.question_embedding <=> query_embedding
   LIMIT 1;
 $$;
+-- ─────────────────────────────────────────────────────────────────
+-- PUBLIC INTERACTION LOGS TABLE (Phase 13 - Audit Trail)
+-- ─────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.public_interaction_logs (
+  id         uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id    uuid NOT NULL,
+  question   text NOT NULL,
+  answer     text NOT NULL,
+  sources    jsonb,
+  cached     boolean DEFAULT false,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS public_interaction_logs_user_created_idx
+  ON public.public_interaction_logs (user_id, created_at DESC);
+
+ALTER TABLE public.public_interaction_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view their own logs" ON public.public_interaction_logs;
+CREATE POLICY "Users can view their own logs"
+  ON public.public_interaction_logs FOR SELECT
+  USING (auth.uid() = user_id);
