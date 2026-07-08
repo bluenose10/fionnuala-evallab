@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Search,
   Sparkles,
@@ -22,6 +22,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { createClient } from "@/lib/supabase/client";
 
 interface SourceChunk {
   id: string;
@@ -113,6 +114,23 @@ export function LabInterface({ userId }: LabInterfaceProps) {
   const [evalLoading, setEvalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<ChatResponse | null>(null);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<{ id: string; name: string }[]>([]);
+
+    useEffect(() => {
+    async function fetchDocs() {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("documents")
+        .select("id, name")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+      
+      if (error) console.error("[Lab] Failed to fetch docs:", error);
+      if (data) setDocuments(data);
+    }
+    fetchDocs();
+  }, [userId]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -129,7 +147,11 @@ export function LabInterface({ userId }: LabInterfaceProps) {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: query.trim(), matchCount: 3 }),
+        body: JSON.stringify({
+          query: query.trim(),
+          matchCount: 3,
+          document_id: selectedDocumentId,
+        }),
       });
 
       if (!res.ok) {
@@ -194,7 +216,7 @@ export function LabInterface({ userId }: LabInterfaceProps) {
           QA &amp; Retrieval Lab
         </h1>
         <p className="text-muted-foreground">
-          Ask a question and inspect the grounded answer beside the exact
+          Ask a question and inspect the answer beside the exact
           chunks retrieved from your knowledge base.
         </p>
       </div>
@@ -202,6 +224,23 @@ export function LabInterface({ userId }: LabInterfaceProps) {
       <Card>
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="mb-4">
+              <label className="text-sm text-muted-foreground mb-1.5 block">
+                Search within
+              </label>
+              <select
+                value={selectedDocumentId || ""}
+                onChange={(e) => setSelectedDocumentId(e.target.value || null)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">All Documents</option>
+                {documents.map((doc) => (
+                  <option key={doc.id} value={doc.id}>
+                    {doc.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Textarea
@@ -212,12 +251,7 @@ export function LabInterface({ userId }: LabInterfaceProps) {
                 disabled={isLoading}
               />
             </div>
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">
-                The backend embeds your query, runs cosine similarity search,
-                synthesizes a grounded answer, and then scores it with an
-                LLM-as-a-Judge evaluator.
-              </p>
+            <div className="flex items-center justify-end">
               <Button type="submit" disabled={isLoading || !query.trim()}>
                 {isLoading ? (
                   <>
@@ -233,6 +267,29 @@ export function LabInterface({ userId }: LabInterfaceProps) {
         </CardContent>
       </Card>
 
+      <div className="rounded-lg border border-border/50 bg-muted/30 px-5 py-4">
+        <p className="text-sm font-semibold text-foreground/80 mb-3">How this works:</p>
+        <ul className="text-sm text-muted-foreground space-y-2 list-none pl-0">
+          <li className="flex items-start gap-3">
+            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary/70 flex-shrink-0"></span>
+            <span>You ask a question.</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary/70 flex-shrink-0"></span>
+            <span>The system finds the 3 most relevant paragraphs from your documents <span className="text-foreground/50">(shown below)</span>.</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary/70 flex-shrink-0"></span>
+            <span>The AI writes an answer using <em>only</em> those paragraphs <span className="text-foreground/50">(shown below)</span>.</span>
+          </li>
+        </ul>
+        <div className="mt-3 pt-3 border-t border-border/30">
+          <p className="text-sm text-muted-foreground">
+            <span className="font-semibold text-foreground/80">Your job:</span> Check the 3 chunks below. If they&apos;re the right bits of your document, the system is working perfectly.
+          </p>
+        </div>
+      </div>
+
       {error && (
         <div className="flex items-start gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
@@ -247,7 +304,7 @@ export function LabInterface({ userId }: LabInterfaceProps) {
         <div className="flex flex-col gap-6 w-full">
           <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Vectorizing Query &amp; Executing DB Cosine Distance Match...
+            Searching documents...
           </p>
           <Card className="w-full">
             <CardHeader>
@@ -276,15 +333,15 @@ export function LabInterface({ userId }: LabInterfaceProps) {
 
       {response && (
         <div className="flex flex-col gap-6 w-full">
-          {/* Grounded Synthesis */}
+          {/* Answer */}
           <Card className="w-full">
             <CardHeader>
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-primary" />
-                <CardTitle>Grounded Synthesis</CardTitle>
+                <CardTitle>Answer</CardTitle>
               </div>
               <CardDescription>
-                AI-generated answer with inline citations to retrieved evidence.
+                Generated from your documents with inline citations.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -300,13 +357,13 @@ export function LabInterface({ userId }: LabInterfaceProps) {
             </CardContent>
           </Card>
 
-          {/* Evidence Evaluation Space */}
+          {/* Retrieved Evidence */}
           <div className="flex flex-col gap-4 w-full">
             <div>
               <div className="flex items-center gap-2">
                 <FileSearch className="h-5 w-5 text-primary" />
                 <h2 className="text-lg font-semibold leading-none tracking-tight">
-                  Evidence Evaluation Space
+                  Retrieved Evidence
                 </h2>
               </div>
               <p className="mt-1.5 text-sm text-muted-foreground">
