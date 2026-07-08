@@ -23,7 +23,7 @@ interface ChatRequest {
   /** Number of chunks to retrieve. Default: 5. */
   matchCount?: number;
   /** Optional: scope retrieval to a single document by UUID. */
-  documentId?: string;
+  document_id?: string;
 }
 
 interface SourceChunk {
