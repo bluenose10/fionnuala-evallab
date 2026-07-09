@@ -147,7 +147,7 @@ function LoginForm() {
         }
         .el-welcome-sub {
           font-size: 14px;
-          color: #4b7a5a;
+          color: #7ebd93;
           margin-bottom: 32px;
         }
 
@@ -249,7 +249,7 @@ function LoginForm() {
         .el-register {
           text-align: center;
           font-size: 13px;
-          color: #4b7a5a;
+          color: #7ebd93;
           margin-top: 4px;
         }
         .el-register a {
@@ -334,7 +334,7 @@ function LoginForm() {
 
         .el-sub {
           font-size: 14px;
-          color: #4b7a5a;
+          color: #7ebd93;
           line-height: 1.6;
           margin-bottom: 36px;
         }
@@ -374,7 +374,7 @@ function LoginForm() {
         }
         .el-stat-desc {
           font-size: 12px;
-          color: #4b7a5a;
+          color: #7ebd93;
           line-height: 1.4;
         }
 
@@ -393,7 +393,7 @@ function LoginForm() {
           line-height: 1;
           text-shadow: 0 0 20px rgba(34,197,94,0.4);
         }
-        .el-target-label { font-size: 12px; color: #4b7a5a; line-height: 1.4; }
+        .el-target-label { font-size: 12px; color: #7ebd93; line-height: 1.4; }
         .el-target-label strong {
           display: block;
           color: #86efac;
