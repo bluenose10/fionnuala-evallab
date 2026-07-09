@@ -24,29 +24,44 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Verify API Key
-    const { data: keyData, error: keyError } = await supabaseAdmin
+       const { data: keyData, error: keyError } = await supabaseAdmin
       .from("client_api_keys")
       .select("user_id")
       .eq("api_key", apiKey)
-      .single();
+      .maybeSingle();
 
-    if (keyError || !keyData) {
-      return NextResponse.json({ error: "Invalid API Key" }, { status: 401 });
+    if (keyError) {
+      console.error("[Public Chat] API key lookup failed:", keyError);
+      return NextResponse.json(
+        { error: "Internal server error" },
+        { status: 500 }
+      );
+    }
+
+    if (!keyData) {
+      return NextResponse.json(
+        { error: "Invalid API Key" },
+        { status: 401 }
+      );
     }
 
     const clientId = keyData.user_id;
 
     // 2. Auto-Winner Configuration Lookup
-    const { data: winnerConfig } = await supabaseAdmin
-      .from("experiment_runs")
-      .select("chunk_size, avg_faithfulness, avg_relevance, avg_precision")
-      .eq("user_id", clientId)
-      .gte("query_count", 3)
-      .order("avg_faithfulness", { ascending: false })
-      .limit(1)
-      .single();
+    const { data: winnerConfig, error } = await supabaseAdmin
+  .from("experiment_runs")
+  .select("chunk_size, avg_faithfulness, avg_relevance, avg_precision")
+  .eq("user_id", clientId)
+  .gte("query_count", 3)
+  .order("avg_faithfulness", { ascending: false })
+  .limit(1)
+  .maybeSingle();
 
-    const chunkSize = winnerConfig?.chunk_size ?? 512;
+if (error) {
+  console.error("Failed to fetch winner config", error);
+}
+
+const chunkSize = winnerConfig?.chunk_size ?? 512;
     const topK = 3;
     const threshold = 0.3;
 
