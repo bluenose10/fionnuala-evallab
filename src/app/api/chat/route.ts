@@ -116,6 +116,10 @@ export async function POST(request: NextRequest) {
   // ── 5. Retrieve relevant chunks via match_document_chunks RPC ──────────────
   //    Service client bypasses RLS; user isolation is enforced by passing
   //    filter_user_id into the SQL function (defence-in-depth).
+  //    NOTE: single-document scoping (documentId) is not yet supported by the
+  //    canonical match_document_chunks RPC (no filter_document_id parameter
+  //    exists on the function). Retrieval always searches across all of the
+  //    user's documents for now — see KIMI.md if that feature gets built.
   const serviceClient = createServiceClient();
 
   const rpcParams: Record<string, unknown> = {
@@ -124,9 +128,6 @@ export async function POST(request: NextRequest) {
     match_threshold: 0.0,
     filter_user_id: user.id,
   };
-  if (documentId) {
-    rpcParams.filter_document_id = documentId;
-  }
 
   const retrievalSpan = trace.span({ name: "retrieval", input: rpcParams });
 
