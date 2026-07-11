@@ -1,4 +1,4 @@
-# EvalLab — AI Knowledge Base Evaluation Platform
+# fionnuala — fionnuala AI Knowledge Base
 
 > Accuracy-First AI. A scientific laboratory for **Grounded RAG** — measure
 > Faithfulness, Relevance & Precision instead of guessing. **Not a chatbot.**
@@ -64,7 +64,7 @@ Visit http://localhost:3000.
 
 ## Deployment model
 
-EvalLab is deployed as a **per-client installation** — each client gets their own Vercel project, Supabase project, API key, and login credentials. There is no shared multi-tenant SaaS infrastructure. Accounts are created manually by the administrator in Supabase Auth.
+fionnuala is deployed as a **per-client installation** — each client gets their own Vercel project, Supabase project, API key, and login credentials. There is no shared multi-tenant SaaS infrastructure. Accounts are created manually by the administrator in Supabase Auth.
 
 ---
 

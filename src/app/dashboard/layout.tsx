@@ -32,7 +32,7 @@ export default async function DashboardLayout({
             <FlaskConical className="h-3.5 w-3.5 text-primary" />
           </div>
           <span className="text-sm font-semibold tracking-tight text-foreground">
-            EvalLab
+            fionnuala
           </span>
           <span className="ml-auto rounded-full bg-primary/10 border border-primary/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-primary">
             Live
@@ -60,7 +60,7 @@ export default async function DashboardLayout({
           style={{ boxShadow: "0 1px 0 0 rgba(34,197,94,0.06)" }}
         >
           <span className="text-sm text-muted-foreground md:hidden">
-            EvalLab
+            fionnuala
           </span>
           <div className="ml-auto flex items-center gap-4">
             <span className="hidden text-xs text-muted-foreground sm:inline">

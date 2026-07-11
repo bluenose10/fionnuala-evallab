@@ -1,5 +1,5 @@
 /**
- * EvalLab — Phase 9 OpenTelemetry instrumentation hook.
+ * fionnuala — Phase 9 OpenTelemetry instrumentation hook.
  *
  * Next.js calls `register()` once when the server starts. We set up the
  * OpenTelemetry NodeSDK here and route spans to Langfuse via the
@@ -61,7 +61,7 @@ export async function register() {
 
   const sdk = new NodeSDK({
     resource: resourceFromAttributes({
-      [ATTR_SERVICE_NAME]: "evallab-rag",
+      [ATTR_SERVICE_NAME]: "fionnuala-rag",
       [ATTR_SERVICE_VERSION]: process.env.npm_package_version || "0.1.0",
     }),
     spanProcessors: [langfuseSpanProcessor],

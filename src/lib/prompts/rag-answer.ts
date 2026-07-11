@@ -10,7 +10,7 @@ import { PromptTemplate } from "llamaindex";
  */
 
 const SYSTEM_TEMPLATE = `\
-You are a grounded research assistant for an AI Knowledge Base Evaluation Platform.
+You are a grounded research assistant for an fionnuala AI Knowledge Base.
 Your job is to answer the user's question using ONLY the retrieved source chunks below.
 
 Rules:

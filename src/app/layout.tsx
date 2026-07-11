@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "EvalLab — AI Knowledge Base Evaluation Platform",
+  title: "fionnuala — fionnuala AI Knowledge Base",
   description:
     "Accuracy-First AI. A scientific laboratory for Grounded RAG: measure Faithfulness, Relevance & Precision — not vibes.",
 };

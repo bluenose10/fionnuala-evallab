@@ -422,8 +422,8 @@ function LoginForm() {
                 <FlaskConical size={18} />
               </div>
               <div>
-                <div className="el-logo-text">EvalLab</div>
-                <div className="el-logo-sub">RAG Evaluation Platform</div>
+                <div className="el-logo-text">fionnuala</div>
+                <div className="el-logo-sub">AI Knowledge Base</div>
               </div>
             </div>
 

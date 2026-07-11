@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// EvalLab — Phase 10.3: Experiment-Scoped Cost Mapping
+// fionnuala — Phase 10.3: Experiment-Scoped Cost Mapping
 //
 // CostAccumulator: one instance per experiment configuration, threaded
 // through processDocument() to capture OpenAI .usage at all 4 sites.

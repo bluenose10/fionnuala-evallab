@@ -1,7 +1,7 @@
 import { Langfuse } from "langfuse";
 
 /**
- * EvalLab Langfuse client — Phase 9 observability integration point.
+ * fionnuala Langfuse client — Phase 9 observability integration point.
  *
  * Responsibilities:
  * 1. Parse and validate Langfuse credentials.

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// EvalLab — Phase 10.3: Experiment-Scoped Cost Mapping
+// fionnuala — Phase 10.3: Experiment-Scoped Cost Mapping
 //
 // Centralised pricing source for OpenAI models used across the experiment
 // pipeline.  All rates are per 1,000,000 tokens in USD.
