@@ -29,6 +29,9 @@ interface ChatRequest {
 interface SourceChunk {
   id: string;
   document_id: string;
+  /** Human-readable source filename, resolved after retrieval. Falls back
+   *  to the raw document_id if the lookup fails or the document has no name. */
+  document_name: string;
   content: string;
   similarity: number;
 }
@@ -116,10 +119,11 @@ export async function POST(request: NextRequest) {
   // ── 5. Retrieve relevant chunks via match_document_chunks RPC ──────────────
   //    Service client bypasses RLS; user isolation is enforced by passing
   //    filter_user_id into the SQL function (defence-in-depth).
-  //    NOTE: single-document scoping (documentId) is not yet supported by the
+  //    NOTE: single-document scoping (documentId) is not supported by the
   //    canonical match_document_chunks RPC (no filter_document_id parameter
-  //    exists on the function). Retrieval always searches across all of the
-  //    user's documents for now — see KIMI.md if that feature gets built.
+  //    exists on the function) — retrieval always searches across all of the
+  //    user's documents. See KIMI.md if single-document filtering is ever
+  //    added as a real feature.
   const serviceClient = createServiceClient();
 
   const rpcParams: Record<string, unknown> = {
@@ -148,13 +152,47 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const chunks = (chunksRaw ?? []) as SourceChunk[];
+  const rawChunks = (chunksRaw ?? []) as Omit<SourceChunk, "document_name">[];
+
+  // ── 5b. Resolve document_id → filename for display ───────────────────────
+  //    match_document_chunks only returns document_id (uuid). The QA Lab UI
+  //    previously showed this raw uuid with no way to tell which source file
+  //    a chunk came from — especially confusing when searching "All Documents"
+  //    and getting chunks back from several different files at once.
+  let chunks: SourceChunk[] = rawChunks.map((c) => ({
+    ...c,
+    document_name: c.document_id, // fallback if lookup below misses this id
+  }));
+
+  const uniqueDocIds = Array.from(new Set(rawChunks.map((c) => c.document_id)));
+
+  if (uniqueDocIds.length > 0) {
+    const { data: docRows, error: docLookupError } = await serviceClient
+      .from("documents")
+      .select("id, name")
+      .in("id", uniqueDocIds)
+      .eq("user_id", user.id);
+
+    if (docLookupError) {
+      // Non-fatal — the answer/chunks are still valid, we just fall back to
+      // showing the raw uuid for document_name on every chunk.
+      console.error("[/api/chat] Document name lookup failed:", docLookupError);
+    } else {
+      const nameById = new Map((docRows ?? []).map((d) => [d.id, d.name]));
+      chunks = rawChunks.map((c) => ({
+        ...c,
+        document_name: nameById.get(c.document_id) ?? c.document_id,
+      }));
+    }
+  }
+
   retrievalSpan.end({
     output: {
       chunksRetrieved: chunks.length,
       chunks: chunks.map((c) => ({
         id: c.id,
         document_id: c.document_id,
+        document_name: c.document_name,
         similarity: c.similarity,
       })),
     },

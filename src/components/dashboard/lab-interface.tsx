@@ -27,6 +27,9 @@ import { createClient } from "@/lib/supabase/client";
 interface SourceChunk {
   id: string;
   document_id: string;
+  /** Human-readable source filename. Falls back to document_id if the
+   *  server-side name lookup failed or the document has since been deleted. */
+  document_name: string;
   content: string;
   similarity: number;
 }
@@ -74,8 +77,8 @@ function CollapsibleChunk({ chunk, index }: { chunk: SourceChunk; index: number 
             <p className="text-xs font-semibold text-muted-foreground">
               Chunk {index + 1}
             </p>
-            <p className="truncate text-xs font-mono text-muted-foreground">
-              doc: {chunk.document_id}
+            <p className="truncate text-xs font-medium text-foreground/80">
+              {chunk.document_name}
             </p>
           </div>
           <Badge variant={chunk.similarity >= 0.8 ? "success" : "outline"}>
