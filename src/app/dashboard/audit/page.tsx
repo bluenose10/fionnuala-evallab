@@ -23,12 +23,23 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
+type SourceChunk = {
+  id?: string;
+  document_id: string;
+  /** May be absent on older rows logged before document-name resolution
+   *  was added — falls back to document_id in that case. */
+  document_name?: string;
+  content?: string;
+  similarity?: number;
+};
+
 type LogEntry = {
   id: string;
   question: string;
   answer: string;
   cached: boolean;
   created_at: string;
+  sources: SourceChunk[] | null;
 };
 
 const DATE_RANGES = [
@@ -39,6 +50,13 @@ const DATE_RANGES = [
 ];
 
 const PAGE_SIZE = 50;
+
+/** Distinct, human-readable document names cited in an answer's chunks. */
+function sourceNames(sources: SourceChunk[] | null): string[] {
+  if (!sources || sources.length === 0) return [];
+  const names = sources.map((s) => s.document_name || s.document_id);
+  return Array.from(new Set(names));
+}
 
 export default function AuditTrailPage() {
   const supabase = createClient();
@@ -64,7 +82,7 @@ export default function AuditTrailPage() {
 
     let query = supabase
       .from("public_interaction_logs")
-      .select("id, question, answer, cached, created_at", { count: "exact" })
+      .select("id, question, answer, cached, created_at, sources", { count: "exact" })
       .gte("created_at", since.toISOString())
       .order("created_at", { ascending: false });
 
@@ -147,12 +165,13 @@ export default function AuditTrailPage() {
 
   function exportCSV() {
     if (logs.length === 0) return;
-    const headers = ["Date", "Question", "Answer", "Type"];
+    const headers = ["Date", "Question", "Answer", "Type", "Sources"];
     const rows = logs.map((l) => [
       new Date(l.created_at).toLocaleString(),
       `"${l.question.replace(/"/g, '""')}"`,
       `"${l.answer.replace(/"/g, '""')}"`,
       l.cached ? "Cached" : "Fresh",
+      `"${sourceNames(l.sources).join("; ").replace(/"/g, '""')}"`,
     ]);
     const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -274,7 +293,8 @@ export default function AuditTrailPage() {
             <div>
               <CardTitle>Interaction Log</CardTitle>
               <CardDescription>
-                Every question asked to your public chatbot, with the exact answer delivered.
+                Every question asked to your public chatbot, with the exact answer delivered and the
+                document(s) it was sourced from.
               </CardDescription>
             </div>
             <Button
@@ -327,43 +347,60 @@ export default function AuditTrailPage() {
                 <TableHead>Date &amp; Time</TableHead>
                 <TableHead>Question</TableHead>
                 <TableHead>Answer</TableHead>
+                <TableHead>Sources</TableHead>
                 <TableHead>Type</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-10 text-center">
+                  <TableCell colSpan={5} className="py-10 text-center">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : logs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
                     {search
                       ? `No interactions matching "${search}" in this date range.`
                       : "No interactions logged yet."}
                   </TableCell>
                 </TableRow>
               ) : (
-                logs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell className="text-muted-foreground text-xs whitespace-nowrap">
-                      {new Date(log.created_at).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="max-w-[220px]">
-                      <p className="text-sm truncate" title={log.question}>{log.question}</p>
-                    </TableCell>
-                    <TableCell className="max-w-[320px]">
-                      <p className="text-sm text-muted-foreground truncate" title={log.answer}>{log.answer}</p>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={log.cached ? "secondary" : "success"}>
-                        {log.cached ? "Cached" : "Fresh"}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))
+                logs.map((log) => {
+                  const names = sourceNames(log.sources);
+                  return (
+                    <TableRow key={log.id}>
+                      <TableCell className="text-muted-foreground text-xs whitespace-nowrap">
+                        {new Date(log.created_at).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="max-w-[220px]">
+                        <p className="text-sm truncate" title={log.question}>{log.question}</p>
+                      </TableCell>
+                      <TableCell className="max-w-[320px]">
+                        <p className="text-sm text-muted-foreground truncate" title={log.answer}>{log.answer}</p>
+                      </TableCell>
+                      <TableCell className="max-w-[200px]">
+                        {names.length === 0 ? (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1" title={names.join(", ")}>
+                            {names.map((name) => (
+                              <Badge key={name} variant="outline" className="text-xs font-normal truncate max-w-[180px]">
+                                {name}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={log.cached ? "secondary" : "success"}>
+                          {log.cached ? "Cached" : "Fresh"}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

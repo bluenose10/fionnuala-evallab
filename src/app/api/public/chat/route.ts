@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Verify API Key
-       const { data: keyData, error: keyError } = await supabaseAdmin
+    const { data: keyData, error: keyError } = await supabaseAdmin
       .from("client_api_keys")
       .select("user_id")
       .eq("api_key", apiKey)
@@ -49,19 +49,19 @@ export async function POST(req: NextRequest) {
 
     // 2. Auto-Winner Configuration Lookup
     const { data: winnerConfig, error } = await supabaseAdmin
-  .from("experiment_runs")
-  .select("chunk_size, avg_faithfulness, avg_relevance, avg_precision")
-  .eq("user_id", clientId)
-  .gte("query_count", 3)
-  .order("avg_faithfulness", { ascending: false })
-  .limit(1)
-  .maybeSingle();
+      .from("experiment_runs")
+      .select("chunk_size, avg_faithfulness, avg_relevance, avg_precision")
+      .eq("user_id", clientId)
+      .gte("query_count", 3)
+      .order("avg_faithfulness", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-if (error) {
-  console.error("Failed to fetch winner config", error);
-}
+    if (error) {
+      console.error("Failed to fetch winner config", error);
+    }
 
-const chunkSize = winnerConfig?.chunk_size ?? 512;
+    const chunkSize = winnerConfig?.chunk_size ?? 512;
     const topK = 3;
     const threshold = 0.3;
 
@@ -104,7 +104,7 @@ const chunkSize = winnerConfig?.chunk_size ?? 512;
     console.log("[CACHE MISS] Running full RAG pipeline");
 
     // 5. Retrieve relevant chunks
-    let { data: chunks, error: rpcError } = await supabaseAdmin.rpc("match_document_chunks", {
+    let { data: chunksRaw, error: rpcError } = await supabaseAdmin.rpc("match_document_chunks", {
       query_embedding: queryEmbedding,
       match_count: topK,
       match_threshold: threshold,
@@ -113,11 +113,43 @@ const chunkSize = winnerConfig?.chunk_size ?? 512;
     });
 
     if (rpcError) console.error("[RPC ERROR]", rpcError);
-    console.log("[DEBUG] Chunks found:", chunks?.length ?? 0);
+    console.log("[DEBUG] Chunks found:", chunksRaw?.length ?? 0);
 
     // No chunks — do NOT log or cache
-    if (!chunks || chunks.length === 0) {
+    if (!chunksRaw || chunksRaw.length === 0) {
       return NextResponse.json({ answer: "I don't have enough information to answer that." });
+    }
+
+    // 5b. Resolve document_id → filename for audit trail / citation display.
+    //    Mirrors the same fix applied to /api/chat and /api/retrieve. Without
+    //    this, public_interaction_logs.sources only carries raw document_id
+    //    uuids, making it impossible for a client to see which of their PDFs
+    //    an answer actually came from — especially important when a single
+    //    answer cites chunks from more than one document (e.g. a legal
+    //    question answered from both a statute and a case file).
+    let chunks = chunksRaw.map((c: any) => ({
+      ...c,
+      document_name: c.document_id, // fallback if lookup below misses this id
+    }));
+
+    const uniqueDocIds = Array.from(new Set(chunksRaw.map((c: any) => c.document_id)));
+
+    if (uniqueDocIds.length > 0) {
+      const { data: docRows, error: docLookupError } = await supabaseAdmin
+        .from("documents")
+        .select("id, name")
+        .in("id", uniqueDocIds)
+        .eq("user_id", clientId);
+
+      if (docLookupError) {
+        console.error("[Public Chat] Document name lookup failed:", docLookupError);
+      } else {
+        const nameById = new Map((docRows ?? []).map((d) => [d.id, d.name]));
+        chunks = chunksRaw.map((c: any) => ({
+          ...c,
+          document_name: nameById.get(c.document_id) ?? c.document_id,
+        }));
+      }
     }
 
     // 6. Generate answer
