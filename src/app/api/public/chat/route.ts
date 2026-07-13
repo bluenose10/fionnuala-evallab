@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
+import { buildRagAnswerPrompt } from "@/lib/prompts/rag-answer";
 
 export const runtime = "nodejs";
 
@@ -121,13 +122,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 5b. Resolve document_id → filename for audit trail / citation display.
-    //    Mirrors the same fix applied to /api/chat and /api/retrieve. Without
-    //    this, public_interaction_logs.sources only carries raw document_id
-    //    uuids, making it impossible for a client to see which of their PDFs
-    //    an answer actually came from — especially important when a single
-    //    answer cites chunks from more than one document (e.g. a legal
-    //    question answered from both a statute and a case file).
-    let chunks = chunksRaw.map((c: any) => ({
+    let allChunks = chunksRaw.map((c: any) => ({
       ...c,
       document_name: c.document_id, // fallback if lookup below misses this id
     }));
@@ -145,23 +140,54 @@ export async function POST(req: NextRequest) {
         console.error("[Public Chat] Document name lookup failed:", docLookupError);
       } else {
         const nameById = new Map((docRows ?? []).map((d) => [d.id, d.name]));
-        chunks = chunksRaw.map((c: any) => ({
+        allChunks = chunksRaw.map((c: any) => ({
           ...c,
           document_name: nameById.get(c.document_id) ?? c.document_id,
         }));
       }
     }
 
-    // 6. Generate answer
-    const contextText = chunks.map((c: any) => c.content).join("\n\n");
-    const prompt = `You are a helpful AI assistant. Answer the user's question strictly using the provided context. Do not make up information.\n\nContext: ${contextText}\n\nQuestion: ${question}`;
+    // 6. Generate answer using the same citation-aware prompt as the
+    //    internal QA Lab (/api/chat), instead of the previous plain prompt
+    //    with no citations. This is what lets us know which retrieved
+    //    chunks the model actually used to build the answer, rather than
+    //    just which chunks were retrieved as candidates. Chunks are numbered
+    //    [1], [2], [3] in retrieval order — same numbering the model is
+    //    instructed to cite with.
+    const { messages } = buildRagAnswerPrompt(
+      question,
+      allChunks.map((c: any) => ({ content: c.content })),
+    );
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
+      messages,
     });
 
-    const answer = completion.choices[0].message.content;
+    const answer = completion.choices[0].message.content ?? "";
+
+    // 6b. Determine which chunks were actually cited in the answer.
+    //    buildRagAnswerPrompt numbers chunks starting at [1], matching
+    //    allChunks[0]. If the model didn't cite anything (e.g. it declined
+    //    to answer, or ignored the citation instruction), fall back to
+    //    treating every retrieved chunk as a source rather than showing
+    //    nothing — better to over-disclose than under-disclose here.
+    const citedIndices = Array.from(
+      new Set(
+        [...answer.matchAll(/\[(\d+)\]/g)].map((m) => parseInt(m[1], 10)),
+      ),
+    );
+    const citedChunks =
+      citedIndices.length > 0
+        ? citedIndices
+            .map((i) => allChunks[i - 1])
+            .filter((c): c is (typeof allChunks)[number] => Boolean(c))
+        : allChunks;
+
+    // Everything downstream (cache + audit log) stores only the chunks the
+    // answer actually cited, so "Sources" in the dashboard reflects what was
+    // really used — not just what was retrieved as a candidate.
+    const chunks = citedChunks;
 
     // 7. Store in semantic cache
     const { error: cacheError } = await supabaseAdmin
