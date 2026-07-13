@@ -173,9 +173,15 @@ export async function POST(req: NextRequest) {
     //    treating every retrieved chunk as a source rather than showing
     //    nothing — better to over-disclose than under-disclose here.
     const citedIndices = Array.from(
-      new Set(
-        [...answer.matchAll(/\[(\d+)\]/g)].map((m) => parseInt(m[1], 10)),
-      ),
+      (() => {
+        const indices = new Set<number>();
+        const re = /\[(\d+)\]/g;
+        let match: RegExpExecArray | null;
+        while ((match = re.exec(answer)) !== null) {
+          indices.add(parseInt(match[1], 10));
+        }
+        return indices;
+      })(),
     );
     const citedChunks =
       citedIndices.length > 0
