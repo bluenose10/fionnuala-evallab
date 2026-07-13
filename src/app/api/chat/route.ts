@@ -119,19 +119,21 @@ export async function POST(request: NextRequest) {
   // ── 5. Retrieve relevant chunks via match_document_chunks RPC ──────────────
   //    Service client bypasses RLS; user isolation is enforced by passing
   //    filter_user_id into the SQL function (defence-in-depth).
-  //    NOTE: single-document scoping (documentId) is not supported by the
-  //    canonical match_document_chunks RPC (no filter_document_id parameter
-  //    exists on the function) — retrieval always searches across all of the
-  //    user's documents. See KIMI.md if single-document filtering is ever
-  //    added as a real feature.
+  //    filter_document_id is applied at the database level (added via
+  //    migration-add-filter-document-id.sql) — filtering happens before
+  //    ranking, so this is correct regardless of corpus size, unlike the
+  //    earlier over-fetch-and-filter-in-JS workaround.
   const serviceClient = createServiceClient();
 
   const rpcParams: Record<string, unknown> = {
     query_embedding: queryEmbedding,
-    match_count: 3,
+    match_count: matchCount,
     match_threshold: 0.0,
     filter_user_id: user.id,
   };
+  if (documentId) {
+    rpcParams.filter_document_id = documentId;
+  }
 
   const retrievalSpan = trace.span({ name: "retrieval", input: rpcParams });
 
@@ -189,6 +191,7 @@ export async function POST(request: NextRequest) {
   retrievalSpan.end({
     output: {
       chunksRetrieved: chunks.length,
+      scopedToDocument: documentId ?? null,
       chunks: chunks.map((c) => ({
         id: c.id,
         document_id: c.document_id,
@@ -207,29 +210,39 @@ export async function POST(request: NextRequest) {
   // RAG answers. The Ragas judge path (/api/evaluate) keeps gpt-4o.
   const synthesisSpan = trace.span({ name: "synthesis", input: { messages } });
   let answer: string;
-  try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages,
-      temperature: 0.0, // Deterministic output for repeatable Ragas evaluation.
-      max_tokens: 1024,
-    });
 
-    answer = completion.choices[0]?.message?.content?.trim() ?? "";
-    synthesisSpan.end({ output: { answer, model: "gpt-4o-mini" } });
-  } catch (err) {
-    console.error("[/api/chat] OpenAI generation error:", err);
-    trace.update({
-      metadata: {
-        error: err instanceof Error ? err.message : "Generation failed",
-        stage: "synthesis",
-      },
-    });
-    await flushLangfuse();
-    return NextResponse.json(
-      { error: "Failed to generate answer" },
-      { status: 500 },
-    );
+  // Edge case: a document was selected but it genuinely has zero chunks
+  // matching the question above match_threshold. Don't ask the model to
+  // answer from nothing — return a clear, honest response.
+  if (documentId && chunks.length === 0) {
+    answer =
+      "No relevant content was found in the selected document for this question. Try a different question, or search across All Documents.";
+    synthesisSpan.end({ output: { answer, model: "gpt-4o-mini", skipped: true } });
+  } else {
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages,
+        temperature: 0.0, // Deterministic output for repeatable Ragas evaluation.
+        max_tokens: 1024,
+      });
+
+      answer = completion.choices[0]?.message?.content?.trim() ?? "";
+      synthesisSpan.end({ output: { answer, model: "gpt-4o-mini" } });
+    } catch (err) {
+      console.error("[/api/chat] OpenAI generation error:", err);
+      trace.update({
+        metadata: {
+          error: err instanceof Error ? err.message : "Generation failed",
+          stage: "synthesis",
+        },
+      });
+      await flushLangfuse();
+      return NextResponse.json(
+        { error: "Failed to generate answer" },
+        { status: 500 },
+      );
+    }
   }
 
   // ── 8. Return answer, source chunks, and the trace ID for evaluation ───────
